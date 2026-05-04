@@ -25,11 +25,11 @@ CAMPOS_SELECAO = {
 
 # ─── Helpers de callback_data ────────────────────────────────────────────────
 
-def _cb(etapa: str, idx, chat_id: int) -> str:
-    return f"sel:{etapa}:{idx}:{chat_id}"
+def _cb(etapa: str, idx, user_id: int) -> str:
+    return f"sel:{etapa}:{idx}:{user_id}"
 
 
-def _salvar_opcoes(context, chat_id: int, etapa: str, lista: list):
+def _salvar_opcoes(context, user_id: int, etapa: str, lista: list):
     if "opcoes" not in context.user_data:
         context.user_data["opcoes"] = {}
     context.user_data["opcoes"][etapa] = lista
@@ -39,16 +39,16 @@ def _opcao(context, etapa: str, idx: int) -> dict:
     return context.user_data.get("opcoes", {}).get(etapa, [])[idx]
 
 
-def limpar_estado(chat_id: int):
+def limpar_estado(user_id: int):
     """Chamada externa após confirmação/cancelamento do lançamento."""
-    estados.pop(chat_id, None)
+    estados.pop(user_id, None)
 
 
 # ─── Entrada pública ──────────────────────────────────────────────────────────
 
 async def iniciar_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE, dados: dict):
-    chat_id = update.message.chat_id
-    estados[chat_id] = {
+    user_id = update.effective_user.id                             # ← user_id
+    estados[user_id] = {
         "etapa": "conta",
         "dados": {
             **dados,
@@ -57,22 +57,22 @@ async def iniciar_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE, da
             "centro_id":      None, "centro_nome":      None,
         },
     }
-    await _perguntar(update.message, context, chat_id)
+    await _perguntar(update.message, context, user_id)
 
 
 async def callback_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
+    query   = update.callback_query
     await query.answer()
-    chat_id = query.message.chat_id
+    user_id = update.effective_user.id                             # ← user_id
 
-    if chat_id not in estados:
+    if user_id not in estados:
         await query.edit_message_text("⚠️ Sessão expirada. Refaça o lançamento.")
         return
 
     partes  = query.data.split(":")
     etapa   = partes[1]
     idx_str = partes[2]
-    estado  = estados[chat_id]
+    estado  = estados[user_id]
 
     if idx_str == "LIVRE":
         estado["etapa"]       = AGUARDANDO_LIVRE
@@ -96,14 +96,14 @@ async def callback_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
 
-    await _avancar(query, context, chat_id)
+    await _avancar(query, context, user_id)
 
 
 # ─── Texto livre (seleção por nome OU edição de campo) ──────────────────────
 
 async def receber_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    chat_id = update.message.chat_id
-    estado  = estados.get(chat_id)
+    user_id = update.effective_user.id                             # ← user_id
+    estado  = estados.get(user_id)
     if not estado:
         return False
 
@@ -118,7 +118,7 @@ async def receber_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE
     if etapa != AGUARDANDO_LIVRE:
         return False
 
-    texto = update.message.text.strip()
+    texto       = update.message.text.strip()
     etapa_livre = estado["etapa_livre"]
     lista       = estado["lista_livre"]
 
@@ -129,17 +129,17 @@ async def receber_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"✅ Encontrei: *{match['nome']}*", parse_mode="Markdown",
         )
         estado["etapa"] = etapa_livre
-        await _avancar(update, context, chat_id)
+        await _avancar(update, context, user_id)
     else:
         sugestoes = top3(lista, texto)
         if sugestoes:
-            _salvar_opcoes(context, chat_id, etapa_livre, sugestoes)
+            _salvar_opcoes(context, user_id, etapa_livre, sugestoes)
             botoes = [
-                [InlineKeyboardButton(s["nome"], callback_data=_cb(etapa_livre, idx, chat_id))]
+                [InlineKeyboardButton(s["nome"], callback_data=_cb(etapa_livre, idx, user_id))]
                 for idx, s in enumerate(sugestoes)
             ]
             botoes.append([InlineKeyboardButton("⏭️ Pular",
-                                                callback_data=_cb(etapa_livre, "PULAR", chat_id))])
+                                                callback_data=_cb(etapa_livre, "PULAR", user_id))])
             await update.message.reply_text(
                 f'🔍 Não achei exatamente *"{texto}"*. Você quis dizer?',
                 parse_mode="Markdown",
@@ -156,36 +156,35 @@ async def receber_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def callback_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Padrões:
-       edit:menu:<chat_id>          — abre menu de campos
-       edit:f:<campo>:<chat_id>     — edita o campo escolhido
-       edit:cancel:<chat_id>        — volta para resumo sem alterar
+       edit:menu:<user_id>          — abre menu de campos
+       edit:f:<campo>:<user_id>     — edita o campo escolhido
+       edit:cancel:<user_id>        — volta para resumo sem alterar
     """
-    query = update.callback_query
+    query   = update.callback_query
     await query.answer()
-    partes = query.data.split(":")
-    acao   = partes[1]
-    chat_id = int(partes[-1])
+    partes  = query.data.split(":")
+    acao    = partes[1]
+    user_id = int(partes[-1])
 
-    estado = estados.get(chat_id)
+    estado = estados.get(user_id)
     if not estado:
-        # Pode estar só no bot_data (resumo já foi mostrado e estado limpo no fluxo antigo).
-        # Restaurar estado a partir de dados salvos:
-        dados = context.bot_data.get(f"lancamento_{chat_id}")
+        # Restaurar estado a partir de dados salvos no bot_data
+        dados = context.bot_data.get(f"lancamento_{user_id}")        # ← user_id
         if not dados:
             await query.edit_message_text("⚠️ Sessão expirada. Refaça o lançamento.")
             return
-        estado = estados[chat_id] = {"etapa": "edit", "dados": dict(dados)}
+        estado = estados[user_id] = {"etapa": "edit", "dados": dict(dados)}
 
     if acao == "menu":
         botoes = [
-            [InlineKeyboardButton("📝 Título",     callback_data=f"edit:f:titulo:{chat_id}")],
-            [InlineKeyboardButton("💰 Valor",      callback_data=f"edit:f:valor:{chat_id}")],
-            [InlineKeyboardButton("📅 Vencimento", callback_data=f"edit:f:vencimento:{chat_id}")],
-            [InlineKeyboardButton("🔢 Parcelas",   callback_data=f"edit:f:parcelas:{chat_id}")],
-            [InlineKeyboardButton("🏦 Conta",      callback_data=f"edit:f:conta:{chat_id}")],
-            [InlineKeyboardButton("📂 Categoria",  callback_data=f"edit:f:categoria:{chat_id}")],
-            [InlineKeyboardButton("🏷️ Centro de Custo", callback_data=f"edit:f:centro_custo:{chat_id}")],
-            [InlineKeyboardButton("⬅️ Voltar",     callback_data=f"edit:cancel:{chat_id}")],
+            [InlineKeyboardButton("📝 Título",          callback_data=f"edit:f:titulo:{user_id}")],
+            [InlineKeyboardButton("💰 Valor",           callback_data=f"edit:f:valor:{user_id}")],
+            [InlineKeyboardButton("📅 Vencimento",      callback_data=f"edit:f:vencimento:{user_id}")],
+            [InlineKeyboardButton("🔢 Parcelas",        callback_data=f"edit:f:parcelas:{user_id}")],
+            [InlineKeyboardButton("🏦 Conta",           callback_data=f"edit:f:conta:{user_id}")],
+            [InlineKeyboardButton("📂 Categoria",       callback_data=f"edit:f:categoria:{user_id}")],
+            [InlineKeyboardButton("🏷️ Centro de Custo", callback_data=f"edit:f:centro_custo:{user_id}")],
+            [InlineKeyboardButton("⬅️ Voltar",          callback_data=f"edit:cancel:{user_id}")],
         ]
         await query.edit_message_text(
             "✏️ *O que deseja editar?*", parse_mode="Markdown",
@@ -194,30 +193,30 @@ async def callback_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if acao == "cancel":
-        await _confirmar(query, context, chat_id, edit_existente=True)
+        await _confirmar(query, context, user_id, edit_existente=True)
         return
 
     if acao == "f":
         campo = partes[2]
         if campo in CAMPOS_TEXTO:
-            estado["etapa"]       = AGUARDANDO_EDIT
-            estado["edit_campo"]  = campo
+            estado["etapa"]      = AGUARDANDO_EDIT
+            estado["edit_campo"] = campo
             await query.edit_message_text(
                 f"✏️ Digite o novo valor para *{CAMPOS_TEXTO[campo]}*:",
                 parse_mode="Markdown",
             )
         elif campo in CAMPOS_SELECAO:
-            estado["etapa"]     = campo
-            estado["editando"]  = True   # após escolha, vai direto pro resumo
-            await _perguntar(query.message, context, chat_id)
+            estado["etapa"]    = campo
+            estado["editando"] = True   # após escolha, vai direto pro resumo
+            await _perguntar(query.message, context, user_id)
         else:
             await query.edit_message_text("⚠️ Campo desconhecido.")
 
 
 async def _aplicar_edit_texto(update: Update, context: ContextTypes.DEFAULT_TYPE, estado: dict):
-    texto = update.message.text.strip()
-    campo = estado.get("edit_campo")
-    chat_id = update.message.chat_id
+    texto   = update.message.text.strip()
+    campo   = estado.get("edit_campo")
+    user_id = update.effective_user.id                             # ← user_id
 
     if campo == "titulo":
         estado["dados"]["titulo"] = texto
@@ -251,13 +250,13 @@ async def _aplicar_edit_texto(update: Update, context: ContextTypes.DEFAULT_TYPE
     estado.pop("edit_campo", None)
     estado["etapa"] = "edit"
     await update.message.reply_text("✅ Atualizado.")
-    await _confirmar(update, context, chat_id, edit_existente=False)
+    await _confirmar(update, context, user_id, edit_existente=False)
 
 
 # ─── Privados ─────────────────────────────────────────────────────────────────
 
-async def _perguntar(msg_or_query, context, chat_id: int):
-    estado = estados[chat_id]
+async def _perguntar(msg_or_query, context, user_id: int):
+    estado = estados[user_id]
     etapa  = estado["etapa"]
     dados  = estado["dados"]
     tipo   = dados["tipo"]
@@ -273,18 +272,18 @@ async def _perguntar(msg_or_query, context, chat_id: int):
         sugestoes = sugerir_centro(termo)
         titulo    = "🏷️ *Centro de Custo*"
 
-    _salvar_opcoes(context, chat_id, etapa, sugestoes)
+    _salvar_opcoes(context, user_id, etapa, sugestoes)
 
     botoes = [
         [InlineKeyboardButton(
             f"{'✅' if i == 0 else '🔹'} {s['nome']}",
-            callback_data=_cb(etapa, i, chat_id),
+            callback_data=_cb(etapa, i, user_id),
         )]
         for i, s in enumerate(sugestoes)
     ]
     botoes.append([
-        InlineKeyboardButton("✏️ Outra (digitar)", callback_data=_cb(etapa, "LIVRE",  chat_id)),
-        InlineKeyboardButton("⏭️ Pular",           callback_data=_cb(etapa, "PULAR",  chat_id)),
+        InlineKeyboardButton("✏️ Outra (digitar)", callback_data=_cb(etapa, "LIVRE", user_id)),
+        InlineKeyboardButton("⏭️ Pular",           callback_data=_cb(etapa, "PULAR", user_id)),
     ])
 
     texto = (
@@ -297,32 +296,32 @@ async def _perguntar(msg_or_query, context, chat_id: int):
     await send(texto, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(botoes))
 
 
-async def _avancar(update_or_query, context, chat_id: int):
-    estado = estados[chat_id]
+async def _avancar(update_or_query, context, user_id: int):
+    estado = estados[user_id]
     etapa  = estado["etapa"]
 
     # Em modo edição, qualquer escolha vai direto para o resumo
     if estado.pop("editando", False):
-        await _confirmar(update_or_query, context, chat_id, edit_existente=False)
+        await _confirmar(update_or_query, context, user_id, edit_existente=False)
         return
 
     if etapa == "conta":
         estado["etapa"] = "categoria"
-        await _perguntar(_msg(update_or_query), context, chat_id)
+        await _perguntar(_msg(update_or_query), context, user_id)
 
     elif etapa == "categoria":
         if centros_custo():
             estado["etapa"] = "centro_custo"
-            await _perguntar(_msg(update_or_query), context, chat_id)
+            await _perguntar(_msg(update_or_query), context, user_id)
         else:
-            await _confirmar(update_or_query, context, chat_id)
+            await _confirmar(update_or_query, context, user_id)
 
     else:
-        await _confirmar(update_or_query, context, chat_id)
+        await _confirmar(update_or_query, context, user_id)
 
 
-async def _confirmar(update_or_query, context, chat_id: int, edit_existente: bool = False):
-    estado = estados[chat_id]
+async def _confirmar(update_or_query, context, user_id: int, edit_existente: bool = False):
+    estado = estados[user_id]
     dados  = estado["dados"]
 
     tipo_emoji = "📥" if dados["tipo"] == "RECEBER" else "📤"
@@ -338,16 +337,14 @@ async def _confirmar(update_or_query, context, chat_id: int, edit_existente: boo
     )
     botoes = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Confirmar", callback_data=f"lancar:sim:{chat_id}"),
-            InlineKeyboardButton("✏️ Editar",    callback_data=f"edit:menu:{chat_id}"),
+            InlineKeyboardButton("✅ Confirmar", callback_data=f"lancar:sim:{user_id}"),
+            InlineKeyboardButton("✏️ Editar",    callback_data=f"edit:menu:{user_id}"),
         ],
-        [InlineKeyboardButton("❌ Cancelar",  callback_data=f"lancar:nao:{chat_id}")],
+        [InlineKeyboardButton("❌ Cancelar",     callback_data=f"lancar:nao:{user_id}")],
     ])
 
-    context.bot_data[f"lancamento_{chat_id}"] = dados
+    context.bot_data[f"lancamento_{user_id}"] = dados                # ← user_id
     estado["etapa"] = "aguardando_confirmacao"
-    # NÃO removemos estados[chat_id] aqui — bot.py limpa via limpar_estado()
-    # após o usuário clicar em Confirmar/Cancelar.
 
     if edit_existente and hasattr(update_or_query, "edit_message_text"):
         try:
@@ -358,7 +355,7 @@ async def _confirmar(update_or_query, context, chat_id: int, edit_existente: boo
         except Exception:
             pass
 
-    msg = _msg(update_or_query)
+    msg  = _msg(update_or_query)
     send = getattr(msg, "reply_text", None)
     if send:
         await send(resumo, parse_mode="Markdown", reply_markup=botoes)
@@ -370,14 +367,14 @@ async def _confirmar(update_or_query, context, chat_id: int, edit_existente: boo
 
 def _salvar(estado, etapa, id_val, nome):
     if etapa == "conta":
-        estado["dados"]["conta_id"]     = id_val
-        estado["dados"]["conta_nome"]   = nome
+        estado["dados"]["conta_id"]       = id_val
+        estado["dados"]["conta_nome"]     = nome
     elif etapa == "categoria":
         estado["dados"]["categoria_id"]   = id_val
         estado["dados"]["categoria_nome"] = nome
     else:
-        estado["dados"]["centro_id"]   = id_val
-        estado["dados"]["centro_nome"] = nome
+        estado["dados"]["centro_id"]      = id_val
+        estado["dados"]["centro_nome"]    = nome
     estado["etapa"] = etapa
 
 
