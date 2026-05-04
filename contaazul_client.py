@@ -1,5 +1,6 @@
 import requests, time
 from datetime import date
+from calendar import monthrange
 from auth_contaazul import get_access_token
 from catalogo import categorias_receita, categorias_despesa, contas_financeiras
 
@@ -19,7 +20,6 @@ def _post(url: str, body: dict) -> dict:
         r = requests.post(url, headers=_h(), json=body, timeout=20)
         print(f"[CA] POST {url} → HTTP {r.status_code}")
 
-        # 202 = criado com sucesso (padrão da API Conta Azul v2)
         if r.status_code in (200, 201, 202):
             return r.json()
 
@@ -44,6 +44,36 @@ def _rateio(categoria_id: str, valor: float, centro_id: str | None) -> list:
     if centro_id:
         item["rateio_centro_custo"] = [{"id_centro_custo": centro_id, "valor": valor}]
     return [item]
+
+
+def _add_meses(d: date, n: int) -> date:
+    """Soma n meses preservando o dia, com clamp no último dia válido do mês."""
+    total = d.month - 1 + n
+    ano   = d.year + total // 12
+    mes   = total % 12 + 1
+    ultimo_dia = monthrange(ano, mes)[1]
+    return date(ano, mes, min(d.day, ultimo_dia))
+
+
+def _montar_parcelas(titulo: str, valor: float, parcelas: int, venc: str,
+                     conta_id: str, observacao: str = "Lançamento automático via bot") -> list:
+    """Monta o array `parcelas` com vencimentos mensais e clamp de dia."""
+    valor_parcela = round(valor / parcelas, 2)
+    venc_dt       = date.fromisoformat(venc)
+    body = []
+    for n in range(parcelas):
+        data_p = _add_meses(venc_dt, n)
+        body.append({
+            "descricao":        _sanitizar(f"{titulo} ({n + 1}/{parcelas})"),
+            "data_vencimento":  str(data_p),
+            "nota":             observacao,
+            "conta_financeira": conta_id,
+            "detalhe_valor": {
+                "valor_bruto":   valor_parcela,
+                "valor_liquido": valor_parcela,
+            },
+        })
+    return body
 
 
 def _verificar_duplicata(titulo: str, valor: float, vencimento: str, tipo: str) -> bool:
@@ -73,9 +103,10 @@ def _verificar_duplicata(titulo: str, valor: float, vencimento: str, tipo: str) 
     return False
 
 
-def criar_lancamento(dados: dict) -> dict:
+def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
     """
     dados = resultado do fluxo_lancamento após confirmação.
+    forcar=True pula verificação de duplicata.
     Retorna {"ok": True, "id": protocolId} ou {"ok": False, "erro": str}
     """
     tipo     = dados["tipo"]
@@ -84,7 +115,6 @@ def criar_lancamento(dados: dict) -> dict:
     parcelas = int(dados.get("parcelas", 1))
     venc     = dados["vencimento"]
 
-    # IDs resolvidos pelo fluxo de seleção
     conta_id  = dados.get("conta_id")    or (contas_financeiras() or [{}])[0].get("id")
     cat_id    = dados.get("categoria_id") or _cat_padrao(tipo)
     centro_id = dados.get("centro_id")
@@ -94,48 +124,27 @@ def criar_lancamento(dados: dict) -> dict:
     if not cat_id:
         return {"ok": False, "erro": "Categoria não encontrada no Conta Azul."}
 
-    # Anti-duplicata
-    if _verificar_duplicata(titulo, valor, venc, tipo):
+    if not forcar and _verificar_duplicata(titulo, valor, venc, tipo):
         return {
             "ok":       False,
             "erro":     "DUPLICATA",
             "mensagem": f"Já existe um lançamento similar de R$ {valor:.2f} em {venc}.",
         }
 
-    # Monta parcelas com vencimentos mensais
-    valor_parcela = round(valor / parcelas, 2)
-    venc_dt       = date.fromisoformat(venc)
-    parcelas_body = []
-
-    for n in range(parcelas):
-        mes_offset = venc_dt.month + n - 1
-        data_p = date(
-            venc_dt.year + mes_offset // 12,
-            mes_offset % 12 + 1,
-            venc_dt.day,
-        )
-        parcelas_body.append({
-            "descricao":       _sanitizar(f"{titulo} ({n + 1}/{parcelas})"),
-            "data_vencimento": str(data_p),
-            "nota":            "Lançamento automático via bot",
-            "conta_financeira": conta_id,
-            "detalhe_valor": {
-                "valor_bruto":   valor_parcela,
-                "valor_liquido": valor_parcela,
-            },
-        })
+    observacao = "Lançamento forçado via bot" if forcar else "Lançamento automático via bot"
 
     body = {
         "data_competencia":   venc,
         "valor":              valor,
         "descricao":          titulo,
-        "observacao":         "Lançamento automático via bot",
+        "observacao":         observacao,
         "conta_financeira":   conta_id,
         "rateio":             _rateio(cat_id, valor, centro_id),
-        "condicao_pagamento": {"parcelas": parcelas_body},
+        "condicao_pagamento": {
+            "parcelas": _montar_parcelas(titulo, valor, parcelas, venc, conta_id, observacao),
+        },
     }
 
-    # Contato é required na API — inclui se disponível
     contato_id = dados.get("contato_id")
     if contato_id:
         body["contato"] = contato_id
@@ -143,7 +152,6 @@ def criar_lancamento(dados: dict) -> dict:
     endpoint  = "contas-a-receber" if tipo == "RECEBER" else "contas-a-pagar"
     resultado = _post(f"{BASE}/{endpoint}", body)
 
-    # API retorna protocolId + status (não um id direto)
     return {
         "ok":   True,
         "id":   resultado.get("protocolId"),
