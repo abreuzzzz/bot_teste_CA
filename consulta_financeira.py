@@ -2,19 +2,29 @@ import requests
 from datetime import date, timedelta
 from auth_contaazul import get_access_token
 
-BASE = "https://api-v2.contaazul.com/v1/financeiro"
+BASE = "https://api-v2.contaazul.com/v1/financeiro/eventos-financeiros"
+
+# Status conforme documentação da API v2
+STATUS_PENDENTE  = ["EM_ABERTO", "ATRASADO"]
+STATUS_RECEBIDO  = ["RECEBIDO", "RECEBIDO_PARCIAL"]
 
 
-def _h():
+def _h() -> dict:
     return {"Authorization": f"Bearer {get_access_token()}"}
 
 
-def _buscar(endpoint, params) -> list:
+def _buscar(endpoint: str, params: dict) -> list:
     itens, pagina = [], 1
     while True:
-        r = requests.get(f"{BASE}/{endpoint}", headers=_h(),
-                         params={"pagina": pagina, "tamanho_pagina": 200, **params}, timeout=15)
+        r = requests.get(
+            f"{BASE}/{endpoint}",
+            headers=_h(),
+            params={"pagina": pagina, "tamanho_pagina": 200, **params},
+            timeout=15,
+        )
+        print(f"[CFQ] GET {BASE}/{endpoint} → HTTP {r.status_code}")
         if r.status_code != 200:
+            print(f"[CFQ] Erro: {r.text[:200]}")
             break
         data  = r.json()
         batch = data.get("itens", [])
@@ -28,39 +38,55 @@ def _buscar(endpoint, params) -> list:
 def resumo_mes(mes: date = None) -> dict:
     if not mes:
         mes = date.today().replace(day=1)
-    fim = (mes.replace(month=mes.month % 12 + 1, day=1) if mes.month < 12
-           else mes.replace(year=mes.year + 1, month=1, day=1)) - timedelta(days=1)
-    p   = {"data_vencimento_de": str(mes), "data_vencimento_ate": str(fim)}
+
+    # Último dia do mês
+    if mes.month == 12:
+        fim = mes.replace(year=mes.year + 1, month=1, day=1) - timedelta(days=1)
+    else:
+        fim = mes.replace(month=mes.month + 1, day=1) - timedelta(days=1)
+
+    p = {
+        "data_vencimento_de":  str(mes),
+        "data_vencimento_ate": str(fim),
+    }
 
     rec = _buscar("contas-a-receber/buscar", p)
-    pag = _buscar("contas-a-pagar/buscar",  p)
+    pag = _buscar("contas-a-pagar/buscar",   p)
 
-    total_rec  = sum(i.get("valor", 0) for i in rec)
-    total_pag  = sum(i.get("valor", 0) for i in pag)
-    recebido   = sum(i.get("valor", 0) for i in rec if i.get("status") == "RECEBIDO")
-    pago       = sum(i.get("valor", 0) for i in pag if i.get("status") == "PAGO")
-    atrasados_rec = [i for i in rec if i.get("status") == "PENDENTE" and i.get("data_vencimento", "") < str(date.today())]
-    atrasados_pag = [i for i in pag if i.get("status") == "PENDENTE" and i.get("data_vencimento", "") < str(date.today())]
+    total_rec = sum(i.get("valor", 0) for i in rec)
+    total_pag = sum(i.get("valor", 0) for i in pag)
+
+    # "RECEBIDO" e "RECEBIDO_PARCIAL" para ambos os tipos (padrão da API v2)
+    recebido = sum(i.get("valor", 0) for i in rec if i.get("status") in STATUS_RECEBIDO)
+    pago     = sum(i.get("valor", 0) for i in pag if i.get("status") in STATUS_RECEBIDO)
+
+    hoje = str(date.today())
+    atrasados_rec = [i for i in rec if i.get("status") in STATUS_PENDENTE and i.get("data_vencimento", "") < hoje]
+    atrasados_pag = [i for i in pag if i.get("status") in STATUS_PENDENTE and i.get("data_vencimento", "") < hoje]
 
     return {
-        "periodo": f"{mes.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}",
-        "total_receber": total_rec,
-        "total_pagar":   total_pag,
-        "recebido":      recebido,
-        "pago":          pago,
-        "resultado":     recebido - pago,
-        "saldo_projetado": total_rec - total_pag,
+        "periodo":           f"{mes.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}",
+        "total_receber":     total_rec,
+        "total_pagar":       total_pag,
+        "recebido":          recebido,
+        "pago":              pago,
+        "resultado":         recebido - pago,
+        "saldo_projetado":   total_rec - total_pag,
         "atrasados_receber": len(atrasados_rec),
         "atrasados_pagar":   len(atrasados_pag),
-        "contas_receber": rec,
-        "contas_pagar":   pag,
+        "contas_receber":    rec,
+        "contas_pagar":      pag,
     }
 
 
 def pendentes(tipo: str = "AMBOS", dias: int = 30) -> list:
     hoje = date.today()
     fim  = hoje + timedelta(days=dias)
-    p    = {"data_vencimento_de": str(hoje), "data_vencimento_ate": str(fim), "status": "PENDENTE"}
+    p    = {
+        "data_vencimento_de":  str(hoje),
+        "data_vencimento_ate": str(fim),
+        "status":              STATUS_PENDENTE,  # lista → API recebe como array
+    }
     result = []
     if tipo in ("RECEBER", "AMBOS"):
         result += [{"tipo": "RECEBER", **i} for i in _buscar("contas-a-receber/buscar", p)]
@@ -71,7 +97,11 @@ def pendentes(tipo: str = "AMBOS", dias: int = 30) -> list:
 
 def atrasados(tipo: str = "AMBOS") -> list:
     ontem = date.today() - timedelta(days=1)
-    p = {"data_vencimento_de": "2020-01-01", "data_vencimento_ate": str(ontem), "status": "PENDENTE"}
+    p = {
+        "data_vencimento_de":  "2020-01-01",
+        "data_vencimento_ate": str(ontem),
+        "status":              ["ATRASADO"],  # API tem status ATRASADO explícito
+    }
     result = []
     if tipo in ("RECEBER", "AMBOS"):
         result += [{"tipo": "RECEBER", **i} for i in _buscar("contas-a-receber/buscar", p)]
