@@ -251,10 +251,19 @@ async def handle_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "termo_extra": dados.get("termo_extra", ""),
         })
 
+    elif acao == "PENDENTES":
+        await cmd_pendentes(update, context)
+
+    elif acao == "ATRASADOS":
+        await cmd_atrasados(update, context)
+
+    elif acao == "RELATORIO":
+        await cmd_relatorio(update, context)
+
     elif acao == "BAIXA":
         await update.message.reply_text(
-            "🔎 Para dar baixa, use /atrasados para ver os lançamentos pendentes "
-            "e me diga o nome exato para eu localizar."
+            "🔎 Me diga o nome ou valor do lançamento que deseja dar baixa "
+            "e eu vou localizar para você."
         )
 
     elif acao == "CONSULTA":
