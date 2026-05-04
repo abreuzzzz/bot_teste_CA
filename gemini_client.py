@@ -4,7 +4,7 @@ import json, re
 from datetime import date
 
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-2.0-flash")
+model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
 SYSTEM = """
 Você é um assistente financeiro especializado. Quando o usuário descrever um lançamento,
