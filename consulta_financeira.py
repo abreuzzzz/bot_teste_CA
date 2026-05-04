@@ -4,13 +4,26 @@ from auth_contaazul import get_access_token
 
 BASE = "https://api-v2.contaazul.com/v1/financeiro/eventos-financeiros"
 
-# Status conforme documentação da API v2
-STATUS_PENDENTE  = ["EM_ABERTO", "ATRASADO"]
-STATUS_RECEBIDO  = ["RECEBIDO", "RECEBIDO_PARCIAL"]
+STATUS_PENDENTE = ["EM_ABERTO", "ATRASADO"]
+STATUS_RECEBIDO = ["RECEBIDO", "RECEBIDO_PARCIAL"]
 
 
 def _h() -> dict:
     return {"Authorization": f"Bearer {get_access_token()}"}
+
+
+def _valor(item: dict) -> float:
+    """
+    A API retorna o valor em campos diferentes dependendo do endpoint.
+    Tenta: valor_composicao.valor_bruto → valor_bruto → valor → 0
+    """
+    vc = item.get("valor_composicao") or {}
+    return (
+        vc.get("valor_bruto")
+        or item.get("valor_bruto")
+        or item.get("valor")
+        or 0.0
+    )
 
 
 def _buscar(endpoint: str, params: dict) -> list:
@@ -24,7 +37,7 @@ def _buscar(endpoint: str, params: dict) -> list:
         )
         print(f"[CFQ] GET {BASE}/{endpoint} → HTTP {r.status_code}")
         if r.status_code != 200:
-            print(f"[CFQ] Erro: {r.text[:200]}")
+            print(f"[CFQ] Erro: {r.text[:300]}")
             break
         data  = r.json()
         batch = data.get("itens", [])
@@ -39,7 +52,6 @@ def resumo_mes(mes: date = None) -> dict:
     if not mes:
         mes = date.today().replace(day=1)
 
-    # Último dia do mês
     if mes.month == 12:
         fim = mes.replace(year=mes.year + 1, month=1, day=1) - timedelta(days=1)
     else:
@@ -53,12 +65,10 @@ def resumo_mes(mes: date = None) -> dict:
     rec = _buscar("contas-a-receber/buscar", p)
     pag = _buscar("contas-a-pagar/buscar",   p)
 
-    total_rec = sum(i.get("valor", 0) for i in rec)
-    total_pag = sum(i.get("valor", 0) for i in pag)
-
-    # "RECEBIDO" e "RECEBIDO_PARCIAL" para ambos os tipos (padrão da API v2)
-    recebido = sum(i.get("valor", 0) for i in rec if i.get("status") in STATUS_RECEBIDO)
-    pago     = sum(i.get("valor", 0) for i in pag if i.get("status") in STATUS_RECEBIDO)
+    total_rec = sum(_valor(i) for i in rec)
+    total_pag = sum(_valor(i) for i in pag)
+    recebido  = sum(_valor(i) for i in rec if i.get("status") in STATUS_RECEBIDO)
+    pago      = sum(_valor(i) for i in pag if i.get("status") in STATUS_RECEBIDO)
 
     hoje = str(date.today())
     atrasados_rec = [i for i in rec if i.get("status") in STATUS_PENDENTE and i.get("data_vencimento", "") < hoje]
@@ -85,7 +95,7 @@ def pendentes(tipo: str = "AMBOS", dias: int = 30) -> list:
     p    = {
         "data_vencimento_de":  str(hoje),
         "data_vencimento_ate": str(fim),
-        "status":              STATUS_PENDENTE,  # lista → API recebe como array
+        "status":              STATUS_PENDENTE,
     }
     result = []
     if tipo in ("RECEBER", "AMBOS"):
@@ -100,7 +110,7 @@ def atrasados(tipo: str = "AMBOS") -> list:
     p = {
         "data_vencimento_de":  "2020-01-01",
         "data_vencimento_ate": str(ontem),
-        "status":              ["ATRASADO"],  # API tem status ATRASADO explícito
+        "status":              ["ATRASADO"],
     }
     result = []
     if tipo in ("RECEBER", "AMBOS"):
