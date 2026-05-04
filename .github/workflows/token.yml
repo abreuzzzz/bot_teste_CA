@@ -8,6 +8,11 @@ on:
         required: false
         default: ""
 
+env:
+  # ✏️ EDITE AQUI com seus valores reais
+  CLIENT_ID:    "752lr5sf6gl561ao37k0e40k4s"
+  REDIRECT_URI: "https://contaazul.com"
+
 jobs:
   gerar-token:
     runs-on: ubuntu-latest
@@ -22,39 +27,44 @@ jobs:
       - name: Instalar dependências
         run: pip install requests PyNaCl
 
+      # ── EXECUÇÃO 1: Gerar link ────────────────────────────────────────────
       - name: Passo 1 — Gerar link de autorização
         if: ${{ github.event.inputs.auth_code == '' }}
-        env:
-          CLIENT_ID:    ${{ secrets.CONTA_AZUL_CLIENT_ID }}
-          REDIRECT_URI: ${{ secrets.CONTA_AZUL_REDIRECT_URI }}
         run: |
           python - <<'EOF'
-          import os, urllib.parse
+          import urllib.parse, os
 
           AUTH_URL = "https://api-v2.contaazul.com/auth/realms/contaazul/protocol/openid-connect/auth"
-          params   = urllib.parse.urlencode({
+
+          params = urllib.parse.urlencode({
               "client_id":     os.environ["CLIENT_ID"],
               "redirect_uri":  os.environ["REDIRECT_URI"],
               "response_type": "code",
               "scope":         "openid",
           })
 
-          print("=" * 70)
-          print("🔗 ABRA ESTE LINK NO NAVEGADOR E AUTORIZE O APP:")
-          print("=" * 70)
-          print(f"{AUTH_URL}?{params}")
-          print("=" * 70)
+          link = f"{AUTH_URL}?{params}"
+
+          print("=" * 80)
+          print("ABRA ESTE LINK NO NAVEGADOR E AUTORIZE:")
+          print("=" * 80)
+          print(link)
+          print("=" * 80)
           print()
-          print("Após autorizar, copie o valor de 'code=XXXX' da URL de redirect.")
-          print("Execute este workflow novamente colando o code no campo de input.")
+          print("Após autorizar, você será redirecionado para:")
+          print(f"  {os.environ['REDIRECT_URI']}?code=XXXXXXXX&...")
+          print()
+          print("Se usou https://httpbin.org/get, o JSON da página mostra:")
+          print('  "args": { "code": "VALOR_AQUI" }')
+          print()
+          print("Copie o valor do code e rode este workflow novamente colando no campo.")
           EOF
 
+      # ── EXECUÇÃO 2: Trocar code → salvar secret ───────────────────────────
       - name: Passo 2 — Trocar code por token e salvar secret
         if: ${{ github.event.inputs.auth_code != '' }}
         env:
-          CLIENT_ID:     ${{ secrets.CONTA_AZUL_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CONTA_AZUL_CLIENT_SECRET }}
-          REDIRECT_URI:  ${{ secrets.CONTA_AZUL_REDIRECT_URI }}
           AUTH_CODE:     ${{ github.event.inputs.auth_code }}
           GH_TOKEN:      ${{ secrets.GH_PAT }}
           GH_REPO:       ${{ github.repository }}
@@ -64,58 +74,74 @@ jobs:
           from base64 import b64encode
           from nacl import encoding, public
 
-          TOKEN_URL = "https://api-v2.contaazul.com/auth/realms/contaazul/protocol/openid-connect/token"
+          TOKEN_URL     = "https://api-v2.contaazul.com/auth/realms/contaazul/protocol/openid-connect/token"
+          CLIENT_ID     = os.environ["CLIENT_ID"]
+          CLIENT_SECRET = os.environ["CLIENT_SECRET"]
+          REDIRECT_URI  = os.environ["REDIRECT_URI"]
+          AUTH_CODE     = os.environ["AUTH_CODE"].strip()
+          GH_TOKEN      = os.environ["GH_TOKEN"]
+          GH_REPO       = os.environ["GH_REPO"]
 
-          # ── Troca code por tokens ─────────────────────────────────────────
+          print(f"Trocando code pelo token...")
+          print(f"  client_id:    {CLIENT_ID}")
+          print(f"  redirect_uri: {REDIRECT_URI}")
+          print(f"  code:         {AUTH_CODE[:20]}...")
+
           r = requests.post(TOKEN_URL, data={
               "grant_type":    "authorization_code",
-              "client_id":     os.environ["CLIENT_ID"],
-              "client_secret": os.environ["CLIENT_SECRET"],
-              "redirect_uri":  os.environ["REDIRECT_URI"],
-              "code":          os.environ["AUTH_CODE"].strip(),
+              "client_id":     CLIENT_ID,
+              "client_secret": CLIENT_SECRET,
+              "redirect_uri":  REDIRECT_URI,
+              "code":          AUTH_CODE,
           }, timeout=20)
 
+          print(f"\nResposta Conta Azul: HTTP {r.status_code}")
+
           if r.status_code != 200:
-              print(f"❌ Erro {r.status_code}: {r.text}")
+              print(f"ERRO: {r.text}")
               exit(1)
 
           tokens      = r.json()
           tokens_json = json.dumps(tokens)
-          print(f"✅ Tokens obtidos. access_token: {tokens['access_token'][:30]}...")
 
-          # ── Salva como GitHub Secret ──────────────────────────────────────
-          repo    = os.environ["GH_REPO"]
-          gh_tok  = os.environ["GH_TOKEN"]
+          print(f"\naccess_token:  {tokens['access_token'][:50]}...")
+          print(f"refresh_token: {tokens['refresh_token'][:50]}...")
+          print(f"expires_in:    {tokens.get('expires_in')}s")
+
+          # ── Salva no GitHub Secret ─────────────────────────────────────
           headers = {
-              "Authorization": f"token {gh_tok}",
+              "Authorization": f"token {GH_TOKEN}",
               "Accept":        "application/vnd.github+json",
           }
 
-          # Busca public key do repo
           pk = requests.get(
-              f"https://api.github.com/repos/{repo}/actions/secrets/public-key",
+              f"https://api.github.com/repos/{GH_REPO}/actions/secrets/public-key",
               headers=headers,
           ).json()
 
-          # Criptografa
+          print(f"\nPublic key GitHub: {pk['key_id']}")
+
           sealed    = public.SealedBox(
               public.PublicKey(pk["key"].encode(), encoding.Base64Encoder)
           ).encrypt(tokens_json.encode())
           encrypted = b64encode(sealed).decode()
 
-          # Upsert do secret
           resp = requests.put(
-              f"https://api.github.com/repos/{repo}/actions/secrets/CONTA_AZUL_TOKENS",
+              f"https://api.github.com/repos/{GH_REPO}/actions/secrets/CONTA_AZUL_TOKENS",
               headers=headers,
               json={"encrypted_value": encrypted, "key_id": pk["key_id"]},
           )
 
+          print(f"Salvar secret: HTTP {resp.status_code}")
+
           if resp.status_code in (201, 204):
-              print("✅ Secret CONTA_AZUL_TOKENS salvo no GitHub com sucesso!")
+              print("\n✅ Secret CONTA_AZUL_TOKENS salvo no GitHub!")
               print()
-              print("🎉 Agora copie o valor de CONTA_AZUL_TOKENS para o Railway também.")
-              print("   (GitHub Actions → Secrets → CONTA_AZUL_TOKENS → copiar valor)")
+              print("PROXIMO PASSO:")
+              print("Copie o valor abaixo e adicione como variável CONTA_AZUL_TOKENS no Railway:")
+              print()
+              print(tokens_json)
           else:
-              print(f"❌ Erro ao salvar secret: {resp.status_code} — {resp.text}")
+              print(f"ERRO ao salvar secret: {resp.status_code} — {resp.text}")
               exit(1)
           EOF
