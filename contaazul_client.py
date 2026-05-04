@@ -2,7 +2,7 @@ import requests, time
 from auth_contaazul import get_access_token
 from catalogo import categorias_receita, categorias_despesa, contas_financeiras, centros_custo
 
-BASE = "https://api-v2.contaazul.com/v1/financeiro"
+BASE = "https://api-v2.contaazul.com/v1/financeiro/eventos-financeiros"
 RETRY_MAX = 3
 
 
