@@ -9,7 +9,7 @@ from config import TELEGRAM_TOKEN, TELEGRAM_ALLOWED_CHAT_ID
 from gemini_client import extrair_lancamento, extrair_de_imagem, responder_consulta
 from fluxo_lancamento import iniciar_selecao, callback_selecao, receber_texto_livre
 from contaazul_client import criar_lancamento, _post, _rateio, _sanitizar, BASE
-from consulta_financeira import resumo_mes, pendentes, atrasados
+from consulta_financeira import resumo_mes, pendentes, atrasados, _valor
 from catalogo import invalidar_cache, contas_financeiras, categorias_receita, categorias_despesa, centros_custo
 from scheduler import iniciar
 
@@ -35,9 +35,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 *Assistente Financeiro IA*\n\n"
         "Pode falar naturalmente! Exemplos:\n"
-        "• _\"Receber R$ 500 de João vence 20/05\"_\n"
-        "• _\"Pagar conta de luz R$ 220 vence 15/05\"_\n"
-        "• _\"Quanto gastei este mês?\"_\n\n"
+        '• _"Receber R$ 500 de João vence 20/05"_\n'
+        '• _"Pagar conta de luz R$ 220 vence 15/05"_\n'
+        '• _"Quanto gastei este mês?"_\n\n'
         "📌 *Comandos disponíveis:*\n"
         "/pendentes — contas a vencer\n"
         "/atrasados — contas em atraso\n"
@@ -58,7 +58,7 @@ async def cmd_pendentes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     linhas = "\n".join(
         f"{'📥' if i['tipo'] == 'RECEBER' else '📤'} "
         f"{i.get('descricao', '?')[:35]} — "
-        f"R$ {i.get('valor', 0):.2f} ({i.get('data_vencimento', '')})"
+        f"R$ {_valor(i):.2f} ({i.get('data_vencimento', '')})"
         for i in itens[:20]
     )
     await update.message.reply_text(
@@ -76,7 +76,7 @@ async def cmd_atrasados(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     linhas = "\n".join(
         f"⚠️ {i.get('descricao', '?')[:35]} — "
-        f"R$ {i.get('valor', 0):.2f} ({i.get('data_vencimento', '')})"
+        f"R$ {_valor(i):.2f} ({i.get('data_vencimento', '')})"
         for i in itens[:20]
     )
     await update.message.reply_text(
@@ -131,10 +131,10 @@ async def callback_lancar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    partes      = query.data.split(":")
-    acao        = partes[1]
-    chat_id     = int(partes[2])
-    dados       = context.bot_data.pop(f"lancamento_{chat_id}", None)
+    partes  = query.data.split(":")
+    acao    = partes[1]
+    chat_id = int(partes[2])
+    dados   = context.bot_data.pop(f"lancamento_{chat_id}", None)
 
     if acao == "nao" or not dados:
         await query.edit_message_text("❌ Lançamento cancelado.")
@@ -214,7 +214,7 @@ async def callback_forcar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     endpoint = "contas-a-receber" if dados["tipo"] == "RECEBER" else "contas-a-pagar"
     r = _post(f"{BASE}/{endpoint}", body)
     await query.edit_message_text(
-        f"✅ Lançado! ID: `{r.get('id', '?')}`",
+        f"✅ Lançado! ID: `{r.get('protocolId', '?')}`",
         parse_mode="Markdown",
     )
 
@@ -224,17 +224,14 @@ async def handle_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _ok(update):
         return
 
-    # 1. Fluxo de seleção de conta/categoria/centro
     if await receber_texto_livre(update, context):
         return
 
-    # 2. Fluxo manual guiado
     manual = context.user_data.get("manual")
     if manual:
         await _handle_manual(update, context, manual)
         return
 
-    # 3. IA analisa o texto
     texto = update.message.text.strip()
     await update.message.reply_text("🤔 Analisando...")
 
@@ -407,12 +404,6 @@ async def _handle_manual(update: Update, context: ContextTypes.DEFAULT_TYPE, man
 # ─── Auto-shutdown para GitHub Actions ───────────────────────────────────────
 
 def _agendar_shutdown(app: Application):
-    """
-    Encerra o bot após 290 min (4h50).
-    O cron do Actions reinicia a cada 5h — isso garante que o step
-    de salvar tokens sempre execute antes do timeout do job.
-    Só ativa quando rodando dentro do GitHub Actions.
-    """
     if not os.environ.get("GITHUB_ACTIONS"):
         return
 
@@ -433,7 +424,6 @@ def _agendar_shutdown(app: Application):
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Comandos
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("pendentes", cmd_pendentes))
     app.add_handler(CommandHandler("atrasados", cmd_atrasados))
@@ -441,29 +431,23 @@ def main():
     app.add_handler(CommandHandler("catalogo",  cmd_catalogo))
     app.add_handler(CommandHandler("manual",    cmd_manual))
 
-    # Callbacks de botões inline
     app.add_handler(CallbackQueryHandler(callback_selecao, pattern="^sel:"))
     app.add_handler(CallbackQueryHandler(callback_lancar,  pattern="^lancar:"))
     app.add_handler(CallbackQueryHandler(callback_forcar,  pattern="^forcar:"))
 
-    # Mensagens
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_mensagem))
     app.add_handler(MessageHandler(filters.Document.ALL,            handle_documento))
     app.add_handler(MessageHandler(filters.PHOTO,                   handle_foto))
 
-    # Scheduler de relatório diário
     iniciar(app, TELEGRAM_ALLOWED_CHAT_ID)
-
-    # Auto-shutdown para GitHub Actions (só ativa se GITHUB_ACTIONS=true)
     _agendar_shutdown(app)
 
     print("🤖 Bot iniciado!")
     print(f"   GitHub Actions mode: {'SIM' if os.environ.get('GITHUB_ACTIONS') else 'NÃO'}")
 
-    # stop_signals=None necessário para funcionar no ambiente do Actions
     app.run_polling(
         allowed_updates=Update.ALL_TYPES,
-        stop_signals=None if os.environ.get("GITHUB_ACTIONS") else None,
+        stop_signals=None,
     )
 
 
