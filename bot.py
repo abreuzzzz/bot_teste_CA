@@ -5,7 +5,7 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, filters, ContextTypes,
 )
-from config import TELEGRAM_TOKEN, TELEGRAM_ALLOWED_CHAT_IDS
+from config import TELEGRAM_TOKEN, TELEGRAM_ALLOWED_CHAT_IDS, TELEGRAM_ALLOWED_CHAT_ID
 from gemini_client import (
     extrair_lancamento, extrair_de_imagem, responder_consulta,
     extrair_de_audio,
@@ -32,8 +32,12 @@ def _ok(update: Update) -> bool:
     return (
         update.effective_user is not None
         and update.effective_chat is not None
-        and update.effective_chat.id == TELEGRAM_ALLOWED_CHAT_ID
+        and update.effective_chat.id in TELEGRAM_ALLOWED_CHAT_IDS  # ← whitelist de grupos/chats
     )
+
+def _user_key(update: Update) -> int:
+    """Chave única por usuário para evitar colisão em grupos."""
+    return update.effective_user.id
 
 # ─── Comandos ─────────────────────────────────────────────────────────────────
 
@@ -180,7 +184,7 @@ async def cmd_orcamento(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args or []
     if len(args) >= 2:
         try:
-            limite = float(args[-1].replace(",", ".").replace("R$", "").strip())
+            limite    = float(args[-1].replace(",", ".").replace("R$", "").strip())
             categoria = " ".join(args[:-1])
             orcamento.definir(categoria, limite)
             await update.message.reply_text(f"✅ Orçamento '{categoria}' = R$ {limite:.2f}")
@@ -284,17 +288,17 @@ async def callback_lancar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    partes  = query.data.split(":")
-    acao    = partes[1]
-    chat_id = int(partes[2])
-    dados   = context.bot_data.pop(f"lancamento_{chat_id}", None)
+    partes   = query.data.split(":")
+    acao     = partes[1]
+    user_id  = int(partes[2])                                      # ← user_id (não chat_id)
+    dados    = context.bot_data.pop(f"lancamento_{user_id}", None)
 
     if acao == "nao" or not dados:
-        limpar_estado(chat_id)
+        limpar_estado(user_id)
         await query.edit_message_text("❌ Lançamento cancelado.")
         return
 
-    limpar_estado(chat_id)
+    limpar_estado(user_id)
     await query.edit_message_text("⏳ Lançando no Conta Azul...")
     resultado = criar_lancamento(dados)
 
@@ -307,13 +311,13 @@ async def callback_lancar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
     elif resultado.get("erro") == "DUPLICATA":
-        context.bot_data[f"lancamento_{chat_id}"] = dados
+        context.bot_data[f"lancamento_{user_id}"] = dados
         await query.edit_message_text(
             f"⚠️ *Possível duplicata!*\n{resultado['mensagem']}\n\nLançar mesmo assim?",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("✅ Forçar", callback_data=f"forcar:{chat_id}"),
-                InlineKeyboardButton("❌ Cancelar", callback_data=f"lancar:nao:{chat_id}"),
+                InlineKeyboardButton("✅ Forçar",   callback_data=f"forcar:{user_id}"),
+                InlineKeyboardButton("❌ Cancelar", callback_data=f"lancar:nao:{user_id}"),
             ]]),
         )
     else:
@@ -325,13 +329,13 @@ async def callback_forcar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    chat_id = int(query.data.split(":")[1])
-    dados   = context.bot_data.pop(f"lancamento_{chat_id}", None)
+    user_id = int(query.data.split(":")[1])                        # ← user_id (não chat_id)
+    dados   = context.bot_data.pop(f"lancamento_{user_id}", None)
     if not dados:
         await query.edit_message_text("⚠️ Sessão expirada.")
         return
 
-    limpar_estado(chat_id)
+    limpar_estado(user_id)
     await query.edit_message_text("⏳ Lançando (forçado)...")
     resultado = criar_lancamento(dados, forcar=True)
 
@@ -351,7 +355,7 @@ async def callback_forcar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _despachar_acao(update: Update, context: ContextTypes.DEFAULT_TYPE,
                           texto: str, dados: dict):
     acao = dados.get("acao", "INDEFINIDO")
-    msg = update.message
+    msg  = update.message
 
     if acao in ("RECEBER", "PAGAR"):
         await iniciar_selecao(update, context, {
@@ -443,9 +447,9 @@ async def handle_voz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("🎙️ Ouvindo áudio...")
     audio = update.message.voice or update.message.audio
-    file = await context.bot.get_file(audio.file_id)
+    file  = await context.bot.get_file(audio.file_id)
     audio_bytes = bytes(await file.download_as_bytearray())
-    mime = getattr(audio, "mime_type", None) or "audio/ogg"
+    mime  = getattr(audio, "mime_type", None) or "audio/ogg"
 
     transcricao, dados = extrair_de_audio(audio_bytes, mime)
     if transcricao:
@@ -475,6 +479,17 @@ async def handle_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file  = await context.bot.get_file(foto.file_id)
     dados = extrair_de_imagem(await file.download_as_bytearray(), "image/jpeg")
     await _despachar_acao(update, context, dados.get("titulo", "Foto"), dados)
+
+
+# ─── Handler de novo membro (bloqueia grupos não autorizados) ─────────────────
+
+async def handle_novo_membro(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    for membro in update.message.new_chat_members:
+        if membro.id == context.bot.id:
+            if update.effective_chat.id not in TELEGRAM_ALLOWED_CHAT_IDS:
+                await update.message.reply_text("⛔ Grupo não autorizado.")
+                await context.bot.leave_chat(update.effective_chat.id)
+            break
 
 
 # ─── Fluxo manual guiado ──────────────────────────────────────────────────────
@@ -556,23 +571,24 @@ def _agendar_shutdown(app: Application):
         os.kill(os.getpid(), signal.SIGTERM)
     threading.Thread(target=_timer, daemon=True).start()
 
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    app.add_handler(CommandHandler("start",     cmd_start))
-    app.add_handler(CommandHandler("pendentes", cmd_pendentes))
-    app.add_handler(CommandHandler("atrasados", cmd_atrasados))
-    app.add_handler(CommandHandler("relatorio", cmd_relatorio))
-    app.add_handler(CommandHandler("catalogo",  cmd_catalogo))
-    app.add_handler(CommandHandler("manual",    cmd_manual))
-    app.add_handler(CommandHandler("grafico",   cmd_grafico))
-    app.add_handler(CommandHandler("orcamento", cmd_orcamento))
+    app.add_handler(CommandHandler("start",             cmd_start))
+    app.add_handler(CommandHandler("pendentes",         cmd_pendentes))
+    app.add_handler(CommandHandler("atrasados",         cmd_atrasados))
+    app.add_handler(CommandHandler("relatorio",         cmd_relatorio))
+    app.add_handler(CommandHandler("catalogo",          cmd_catalogo))
+    app.add_handler(CommandHandler("manual",            cmd_manual))
+    app.add_handler(CommandHandler("grafico",           cmd_grafico))
+    app.add_handler(CommandHandler("orcamento",         cmd_orcamento))
     app.add_handler(CommandHandler("orcamento_remover", cmd_orcamento_remover))
-    app.add_handler(CommandHandler("buscar",    cmd_buscar))
-    app.add_handler(CommandHandler("export",    cmd_export))
-    app.add_handler(CommandHandler("baixa",     cmd_baixa))
+    app.add_handler(CommandHandler("buscar",            cmd_buscar))
+    app.add_handler(CommandHandler("export",            cmd_export))
+    app.add_handler(CommandHandler("baixa",             cmd_baixa))
 
     app.add_handler(CallbackQueryHandler(callback_selecao, pattern="^sel:"))
     app.add_handler(CallbackQueryHandler(callback_lancar,  pattern="^lancar:"))
@@ -581,15 +597,17 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_baixa,   pattern="^baixa:"))
     app.add_handler(CallbackQueryHandler(callback_grafico, pattern="^graf:"))
 
-    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO,    handle_voz))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,  handle_mensagem))
-    app.add_handler(MessageHandler(filters.Document.ALL,             handle_documento))
-    app.add_handler(MessageHandler(filters.PHOTO,                    handle_foto))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_novo_membro))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO,         handle_voz))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,       handle_mensagem))
+    app.add_handler(MessageHandler(filters.Document.ALL,                  handle_documento))
+    app.add_handler(MessageHandler(filters.PHOTO,                         handle_foto))
 
-    iniciar(app, TELEGRAM_ALLOWED_CHAT_ID)
+    iniciar(app, TELEGRAM_ALLOWED_CHAT_ID)   # scheduler continua usando o primeiro ID
     _agendar_shutdown(app)
 
     print("🤖 Bot iniciado!")
+    print(f"   Chats autorizados: {TELEGRAM_ALLOWED_CHAT_IDS}")
     print(f"   GitHub Actions mode: {'SIM' if os.environ.get('GITHUB_ACTIONS') else 'NÃO'}")
 
     app.run_polling(
