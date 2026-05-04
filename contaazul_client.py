@@ -21,7 +21,16 @@ def _post(url: str, body: dict) -> dict:
         print(f"[CA] POST {url} → HTTP {r.status_code}")
 
         if r.status_code in (200, 201, 202):
-            return r.json()
+            try:
+                data = r.json()
+            except Exception:
+                data = {}
+            print(f"[CA] Response: {str(data)[:500]}")
+            # Header Location pode trazer o ID quando o body é vazio
+            loc = r.headers.get("Location") or r.headers.get("location")
+            if loc and isinstance(data, dict):
+                data.setdefault("_location", loc)
+            return data if isinstance(data, dict) else {"_raw": data}
 
         if r.status_code == 500 and tentativa < RETRY_MAX:
             print(f"[CA] Retry {tentativa} — status 500")
@@ -32,6 +41,29 @@ def _post(url: str, body: dict) -> dict:
         r.raise_for_status()
 
     raise Exception("Máximo de tentativas atingido")
+
+
+def _extrair_id(resp: dict) -> str | None:
+    """A API v2 pode retornar o ID em diferentes campos. Tenta vários."""
+    if not isinstance(resp, dict):
+        return None
+    for k in ("id", "protocolId", "protocol_id", "protocolo",
+              "uuid", "identifier", "_id"):
+        v = resp.get(k)
+        if v:
+            return str(v)
+    # Header Location: .../contas-a-pagar/<id>
+    loc = resp.get("_location")
+    if loc:
+        return loc.rstrip("/").rsplit("/", 1)[-1]
+    # Às vezes vem aninhado
+    for k in ("data", "resultado", "resposta"):
+        sub = resp.get(k)
+        if isinstance(sub, dict):
+            r = _extrair_id(sub)
+            if r:
+                return r
+    return None
 
 
 def _sanitizar(texto: str) -> str:
@@ -154,7 +186,7 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
 
     return {
         "ok":   True,
-        "id":   resultado.get("protocolId"),
+        "id":   _extrair_id(resultado),
         "tipo": tipo,
     }
 
