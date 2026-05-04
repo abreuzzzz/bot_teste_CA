@@ -19,6 +19,7 @@ def _post(url: str, body: dict) -> dict:
     for tentativa in range(1, RETRY_MAX + 1):
         r = requests.post(url, headers=_h(), json=body, timeout=20)
         print(f"[CA] POST {url} → HTTP {r.status_code}")
+        print(f"[CA] Payload enviado: {str(body)[:1000]}")         # ← log do payload
 
         if r.status_code in (200, 201, 202):
             try:
@@ -26,7 +27,6 @@ def _post(url: str, body: dict) -> dict:
             except Exception:
                 data = {}
             print(f"[CA] Response: {str(data)[:500]}")
-            # Header Location pode trazer o ID quando o body é vazio
             loc = r.headers.get("Location") or r.headers.get("location")
             if loc and isinstance(data, dict):
                 data.setdefault("_location", loc)
@@ -37,7 +37,7 @@ def _post(url: str, body: dict) -> dict:
             time.sleep(2 ** tentativa)
             continue
 
-        print(f"[CA] Erro {r.status_code}: {r.text[:300]}")
+        print(f"[CA] Erro {r.status_code}: {r.text[:2000]}")       # ← era 300, agora 2000
         r.raise_for_status()
 
     raise Exception("Máximo de tentativas atingido")
@@ -52,11 +52,9 @@ def _extrair_id(resp: dict) -> str | None:
         v = resp.get(k)
         if v:
             return str(v)
-    # Header Location: .../contas-a-pagar/<id>
     loc = resp.get("_location")
     if loc:
         return loc.rstrip("/").rsplit("/", 1)[-1]
-    # Às vezes vem aninhado
     for k in ("data", "resultado", "resposta"):
         sub = resp.get(k)
         if isinstance(sub, dict):
@@ -88,21 +86,21 @@ def _add_meses(d: date, n: int) -> date:
 
 
 def _montar_parcelas(titulo: str, valor: float, parcelas: int, venc: str,
-                     conta_id: str, observacao: str = "Lançamento automático via bot") -> list:
-    """Monta o array `parcelas` com vencimentos mensais e clamp de dia."""
+                     observacao: str = "Lançamento automático via bot") -> list:
+    """
+    Monta o array `parcelas` com vencimentos mensais.
+    REMOVIDO: conta_financeira (fica só no body raiz) e nota (campo inválido).
+    """
     valor_parcela = round(valor / parcelas, 2)
     venc_dt       = date.fromisoformat(venc)
     body = []
     for n in range(parcelas):
         data_p = _add_meses(venc_dt, n)
         body.append({
-            "descricao":        _sanitizar(f"{titulo} ({n + 1}/{parcelas})"),
-            "data_vencimento":  str(data_p),
-            "nota":             observacao,
-            "conta_financeira": conta_id,
+            "descricao":       _sanitizar(f"{titulo} ({n + 1}/{parcelas})"),
+            "data_vencimento": str(data_p),
             "detalhe_valor": {
-                "valor_bruto":   valor_parcela,
-                "valor_liquido": valor_parcela,
+                "valor_bruto": valor_parcela,          # ← apenas valor_bruto
             },
         })
     return body
@@ -126,7 +124,7 @@ def _verificar_duplicata(titulo: str, valor: float, vencimento: str, tipo: str) 
             return False
         itens = r.json().get("itens", [])
         for i in itens:
-            mesmo_valor = abs(i.get("valor", 0) - valor) < 0.01
+            mesmo_valor  = abs(i.get("valor", 0) - valor) < 0.01
             mesmo_titulo = titulo.lower() in i.get("descricao", "").lower()
             if mesmo_valor and mesmo_titulo:
                 return True
@@ -147,7 +145,7 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
     parcelas = int(dados.get("parcelas", 1))
     venc     = dados["vencimento"]
 
-    conta_id  = dados.get("conta_id")    or (contas_financeiras() or [{}])[0].get("id")
+    conta_id  = dados.get("conta_id")     or (contas_financeiras() or [{}])[0].get("id")
     cat_id    = dados.get("categoria_id") or _cat_padrao(tipo)
     centro_id = dados.get("centro_id")
 
@@ -170,10 +168,10 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
         "valor":              valor,
         "descricao":          titulo,
         "observacao":         observacao,
-        "conta_financeira":   conta_id,
+        "conta_financeira":   conta_id,                            # ← só aqui, removido das parcelas
         "rateio":             _rateio(cat_id, valor, centro_id),
         "condicao_pagamento": {
-            "parcelas": _montar_parcelas(titulo, valor, parcelas, venc, conta_id, observacao),
+            "parcelas": _montar_parcelas(titulo, valor, parcelas, venc, observacao),
         },
     }
 
