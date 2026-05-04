@@ -1,38 +1,54 @@
 import time, requests
 from auth_contaazul import get_access_token
 
-BASE = "https://api-v2.contaazul.com/v1/financeiro"
+BASE = "https://api-v2.contaazul.com/v1"
+
 _cache: dict = {}
-_TTL = 3600
+_TTL = 3600  # 1 hora
 
 
-def _h():
+def _h() -> dict:
     return {"Authorization": f"Bearer {get_access_token()}"}
 
 
-def _buscar(endpoint: str, params_extra: dict = {}) -> list:
-    itens, pagina = [], 1
+def _buscar_paginado(endpoint: str, params_extra: dict = {}) -> list:
+    """Busca todos os itens paginando automaticamente."""
+    url    = f"{BASE}/{endpoint}"
+    itens  = []
+    pagina = 1
+
     while True:
         r = requests.get(
-            f"{BASE}/{endpoint}",
+            url,
             headers=_h(),
             params={"pagina": pagina, "tamanho_pagina": 200, **params_extra},
             timeout=15,
         )
+        print(f"[CATALOGO] GET {url} (pág {pagina}) → HTTP {r.status_code}")
+
+        if r.status_code == 404:
+            print(f"[CATALOGO] Endpoint não encontrado: {url}")
+            return []
+
         r.raise_for_status()
-        data = r.json()
-        batch = data.get("itens") or (data if isinstance(data, list) else [])
+        data  = r.json()
+
+        # A API retorna "itens" ou lista direta
+        batch = data.get("itens") or data.get("items") or (data if isinstance(data, list) else [])
         itens += batch
-        if len(itens) >= data.get("itens_totais", len(itens)):
+
+        total = data.get("itens_totais", len(itens))
+        if len(itens) >= total:
             break
         pagina += 1
+
     return itens
 
 
 def _get(chave: str, fn) -> list:
-    e = _cache.get(chave)
-    if e and (time.time() - e["ts"]) < _TTL:
-        return e["data"]
+    entrada = _cache.get(chave)
+    if entrada and (time.time() - entrada["ts"]) < _TTL:
+        return entrada["data"]
     dados = fn()
     _cache[chave] = {"data": dados, "ts": time.time()}
     return dados
@@ -40,19 +56,30 @@ def _get(chave: str, fn) -> list:
 
 def invalidar_cache():
     _cache.clear()
+    print("[CATALOGO] Cache invalidado.")
 
 
 def contas_financeiras() -> list:
-    return _get("contas", lambda: _buscar("contas-financeiras"))
+    # GET /v1/conta-financeira
+    return _get("contas", lambda: _buscar_paginado("conta-financeira", {"apenas_ativo": "true"}))
 
 
 def categorias_receita() -> list:
-    return _get("cat_rec", lambda: _buscar("categorias", {"tipo": "RECEITA"}))
+    # GET /v1/categorias?tipo=RECEITA
+    return _get("cat_rec", lambda: _buscar_paginado("categorias", {
+        "tipo":                "RECEITA",
+        "permite_apenas_filhos": "true",
+    }))
 
 
 def categorias_despesa() -> list:
-    return _get("cat_des", lambda: _buscar("categorias", {"tipo": "DESPESA"}))
+    # GET /v1/categorias?tipo=DESPESA
+    return _get("cat_des", lambda: _buscar_paginado("categorias", {
+        "tipo":                "DESPESA",
+        "permite_apenas_filhos": "true",
+    }))
 
 
 def centros_custo() -> list:
-    return _get("centros", lambda: _buscar("centros-custo"))
+    # GET /v1/centro-de-custo
+    return _get("centros", lambda: _buscar_paginado("centro-de-custo", {"filtro_rapido": "ATIVO"}))
