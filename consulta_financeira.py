@@ -14,14 +14,32 @@ def _h() -> dict:
 
 def _valor(item: dict) -> float:
     """
-    A API retorna o valor em campos diferentes dependendo do endpoint.
-    Tenta: valor_composicao.valor_bruto → valor_bruto → valor → 0
+    Hierarquia de campos conforme documentação API v2:
+    1. valor_composicao.valor_bruto  (campo principal das parcelas)
+    2. valor_bruto                   (campo raiz)
+    3. nao_pago                      (valor pendente da parcela)
+    4. valor                         (fallback legado)
     """
     vc = item.get("valor_composicao") or {}
     return (
         vc.get("valor_bruto")
         or item.get("valor_bruto")
+        or item.get("nao_pago")
         or item.get("valor")
+        or 0.0
+    )
+
+
+def _valor_pago(item: dict) -> float:
+    """
+    Valor efetivamente pago/recebido conforme documentação API v2:
+    1. valor_pago                    (campo direto da parcela)
+    2. valor_composicao.valor_liquido (valor líquido após descontos/taxas)
+    """
+    vc = item.get("valor_composicao") or {}
+    return (
+        item.get("valor_pago")
+        or vc.get("valor_liquido")
         or 0.0
     )
 
@@ -67,8 +85,10 @@ def resumo_mes(mes: date = None) -> dict:
 
     total_rec = sum(_valor(i) for i in rec)
     total_pag = sum(_valor(i) for i in pag)
-    recebido  = sum(_valor(i) for i in rec if i.get("status") in STATUS_RECEBIDO)
-    pago      = sum(_valor(i) for i in pag if i.get("status") in STATUS_RECEBIDO)
+
+    # Usa _valor_pago para itens já quitados (valor efetivamente movimentado)
+    recebido = sum(_valor_pago(i) for i in rec if i.get("status") in STATUS_RECEBIDO)
+    pago     = sum(_valor_pago(i) for i in pag if i.get("status") in STATUS_RECEBIDO)
 
     hoje = str(date.today())
     atrasados_rec = [i for i in rec if i.get("status") in STATUS_PENDENTE and i.get("data_vencimento", "") < hoje]
