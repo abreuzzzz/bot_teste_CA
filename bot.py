@@ -5,7 +5,7 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, filters, ContextTypes,
 )
-from config import TELEGRAM_TOKEN, TELEGRAM_ALLOWED_CHAT_ID
+from config import TELEGRAM_TOKEN, TELEGRAM_ALLOWED_CHAT_IDS
 from gemini_client import (
     extrair_lancamento, extrair_de_imagem, responder_consulta,
     extrair_de_audio,
