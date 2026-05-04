@@ -300,8 +300,10 @@ async def callback_lancar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if resultado["ok"]:
         tipo_emoji = "📥" if dados["tipo"] == "RECEBER" else "📤"
+        id_str = resultado.get("id")
+        sufixo = f"\nID: `{id_str}`" if id_str else ""
         await query.edit_message_text(
-            f"✅ {tipo_emoji} *Lançamento criado!*\nID: `{resultado.get('id', '?')}`",
+            f"✅ {tipo_emoji} *Lançamento criado!*{sufixo}",
             parse_mode="Markdown",
         )
     elif resultado.get("erro") == "DUPLICATA":
@@ -334,8 +336,10 @@ async def callback_forcar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     resultado = criar_lancamento(dados, forcar=True)
 
     if resultado["ok"]:
+        id_str = resultado.get("id")
+        sufixo = f"\nID: `{id_str}`" if id_str else ""
         await query.edit_message_text(
-            f"✅ Lançado! ID: `{resultado.get('id', '?')}`",
+            f"✅ Lançado!{sufixo}",
             parse_mode="Markdown",
         )
     else:
