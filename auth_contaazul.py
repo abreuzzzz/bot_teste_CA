@@ -1,55 +1,70 @@
-import json, os, requests
+import os, json, base64, time, requests
+from config import CONTA_AZUL_CLIENT_ID, CONTA_AZUL_CLIENT_SECRET
 
-TOKEN_URL  = "https://api-v2.contaazul.com/auth/realms/contaazul/protocol/openid-connect/token"
-TOKEN_FILE = "tokens.json"
-
-
-def _inicializar_tokens():
-    if not os.path.exists(TOKEN_FILE):
-        raw = os.environ.get("CONTA_AZUL_TOKENS", "")
-        if raw:
-            with open(TOKEN_FILE, "w") as f:
-                f.write(raw)
-            print("[AUTH] tokens.json restaurado da env var.")
-
-_inicializar_tokens()
+AUTH_TOKEN_URL = "https://auth.contaazul.com/oauth2/token"
+TOKEN_FILE     = "tokens.json"
 
 
-def _ler() -> dict:
-    with open(TOKEN_FILE) as f:
-        return json.load(f)
-
-
-def _salvar(tokens: dict):
+def _salvar_tokens(access_token: str, refresh_token: str, expires_at: float):
     with open(TOKEN_FILE, "w") as f:
-        json.dump(tokens, f, indent=2)
+        json.dump({
+            "access_token":  access_token,
+            "refresh_token": refresh_token,
+            "expires_at":    expires_at,
+        }, f)
+
+
+def _carregar_tokens() -> dict:
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE) as f:
+            return json.load(f)
+    raw = os.environ.get("CONTA_AZUL_TOKENS")
+    if raw:
+        data = json.loads(raw)
+        _salvar_tokens(data["access_token"], data["refresh_token"], data["expires_at"])
+        return data
+    raise RuntimeError("Tokens não encontrados. Execute o workflow first_auth primeiro.")
+
+
+def _renovar_token(refresh_token: str) -> dict:
+    b64 = base64.b64encode(
+        f"{CONTA_AZUL_CLIENT_ID}:{CONTA_AZUL_CLIENT_SECRET}".encode()
+    ).decode()
+    resp = requests.post(
+        AUTH_TOKEN_URL,
+        headers={
+            "Authorization": f"Basic {b64}",
+            "Content-Type":  "application/x-www-form-urlencoded",
+        },
+        data={
+            "grant_type":    "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id":     CONTA_AZUL_CLIENT_ID,
+            "client_secret": CONTA_AZUL_CLIENT_SECRET,
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
 
 
 def get_access_token() -> str:
-    from config import CONTA_AZUL_CLIENT_ID, CONTA_AZUL_CLIENT_SECRET
+    tokens = _carregar_tokens()
 
-    tokens = _ler()
-
-    # Valida token atual
-    r = requests.get(
-        "https://api-v2.contaazul.com/v1/financeiro/contas-financeiras",
-        headers={"Authorization": f"Bearer {tokens['access_token']}"},
-        params={"pagina": 1, "tamanho_pagina": 1},
-        timeout=10,
-    )
-    if r.status_code != 401:
+    # Ainda válido (com margem de 5 min)
+    if time.time() < tokens["expires_at"] - 300:
         return tokens["access_token"]
 
     # Renova
     print("[AUTH] Renovando token...")
-    r = requests.post(TOKEN_URL, data={
-        "grant_type":    "refresh_token",
-        "client_id":     CONTA_AZUL_CLIENT_ID,
-        "client_secret": CONTA_AZUL_CLIENT_SECRET,
-        "refresh_token": tokens["refresh_token"],
-    }, timeout=15)
-    r.raise_for_status()
-    novos = r.json()
-    _salvar(novos)
+    novo       = _renovar_token(tokens["refresh_token"])
+    expires_at = time.time() + novo["expires_in"]
+    _salvar_tokens(novo["access_token"], novo["refresh_token"], expires_at)
     print("[AUTH] Token renovado.")
-    return novos["access_token"]
+    return novo["access_token"]
+
+
+def get_tokens_json_str() -> str:
+    """Retorna conteúdo atual de tokens.json como string (para salvar no secret)."""
+    with open(TOKEN_FILE) as f:
+        return f.read()
