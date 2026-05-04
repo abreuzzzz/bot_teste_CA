@@ -1,4 +1,5 @@
 import re
+from calendar import monthrange
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import date
 from consulta_financeira import _valor
@@ -10,16 +11,20 @@ def _esc(texto: str) -> str:
 
 def iniciar(app, chat_id: int):
     scheduler = AsyncIOScheduler(timezone="America/Sao_Paulo")
-    scheduler.add_job(
-        _relatorio_diario,
-        trigger="cron",
-        hour=8,
-        minute=0,
-        args=[app, chat_id],
-    )
+    scheduler.add_job(_relatorio_diario,  "cron", hour=8,  minute=0,
+                      args=[app, chat_id])
+    scheduler.add_job(_relatorio_semanal, "cron", day_of_week="fri", hour=18, minute=0,
+                      args=[app, chat_id])
+    scheduler.add_job(_relatorio_mensal,  "cron", day="last", hour=18, minute=0,
+                      args=[app, chat_id])
+    scheduler.add_job(_checar_orcamento,  "cron", hour=9, minute=0,
+                      args=[app, chat_id])
     scheduler.start()
-    print("[SCHEDULER] Relatório diário agendado 08:00 BRT.")
+    print("[SCHEDULER] Jobs agendados: diário 08:00, semanal sex 18:00, "
+          "mensal último dia 18:00, orçamento 09:00.")
 
+
+# ─── Relatório diário ─────────────────────────────────────────────────────────
 
 async def _relatorio_diario(app, chat_id: int):
     from consulta_financeira import resumo_mes, pendentes, atrasados
@@ -29,82 +34,141 @@ async def _relatorio_diario(app, chat_id: int):
     pend   = pendentes(dias=7)
     atras  = atrasados()
 
-    # ── Pendentes ─────────────────────────────────────────────────────────────
     if pend:
-        linhas_pend_list = []
-        for i in pend[:5]:
-            emoji = "📥" if i["tipo"] == "RECEBER" else "📤"
-            desc  = _esc(i.get("descricao", "?")[:30])
-            valor = _esc("{:.2f}".format(_valor(i)))
-            venc  = _esc(i.get("data_vencimento", ""))
-            linhas_pend_list.append(f"  {emoji} {desc} — R$ {valor} \\({venc}\\)")
-        linhas_pend = "\n".join(linhas_pend_list)
+        linhas_pend = "\n".join(
+            f"  {'📥' if i['tipo'] == 'RECEBER' else '📤'} "
+            f"{_esc(i.get('descricao', '?')[:30])} — R$ {_esc('{:.2f}'.format(_valor(i)))} "
+            f"\\({_esc(i.get('data_vencimento', ''))}\\)"
+            for i in pend[:5]
+        )
     else:
         linhas_pend = "  _\\(nenhum\\)_"
 
-    # ── Atrasados ─────────────────────────────────────────────────────────────
     if atras:
-        linhas_atras_list = []
-        for i in atras[:5]:
-            desc  = _esc(i.get("descricao", "?")[:30])
-            valor = _esc("{:.2f}".format(_valor(i)))
-            venc  = _esc(i.get("data_vencimento", ""))
-            linhas_atras_list.append(f"  ⚠️ {desc} — R$ {valor} \\({venc}\\)")
-        linhas_atras = "\n".join(linhas_atras_list)
+        linhas_atras = "\n".join(
+            f"  ⚠️ {_esc(i.get('descricao', '?')[:30])} — R$ {_esc('{:.2f}'.format(_valor(i)))} "
+            f"\\({_esc(i.get('data_vencimento', ''))}\\)"
+            for i in atras[:5]
+        )
     else:
         linhas_atras = "  _\\(nenhum\\)_"
 
-    # ── Alerta saldo negativo ─────────────────────────────────────────────────
     alerta_saldo = ""
     if resumo["saldo_projetado"] < 0:
-        saldo_fmt    = _esc("{:.2f}".format(resumo["saldo_projetado"]))
-        alerta_saldo = f"\n⚠️ *ALERTA: Saldo projetado negativo\\!* R$ {saldo_fmt}\n"
-
-    # ── Monta mensagem ────────────────────────────────────────────────────────
-    hoje_fmt  = _esc(hoje.strftime("%d/%m/%Y"))
-    periodo   = _esc(resumo["periodo"])
-    total_rec = _esc("{:.2f}".format(resumo["total_receber"]))
-    total_pag = _esc("{:.2f}".format(resumo["total_pagar"]))
-    recebido  = _esc("{:.2f}".format(resumo["recebido"]))
-    pago      = _esc("{:.2f}".format(resumo["pago"]))
-    resultado = _esc("{:.2f}".format(resumo["resultado"]))
+        alerta_saldo = (f"\n⚠️ *ALERTA: Saldo projetado negativo\\!* "
+                        f"R$ {_esc('{:.2f}'.format(resumo['saldo_projetado']))}\n")
 
     msg = (
-        f"☀️ *Bom dia\\! Relatório de {hoje_fmt}*\n\n"
-        f"📊 *Mês atual \\({periodo}\\):*\n"
-        f"  📥 A receber: R$ {total_rec}\n"
-        f"  📤 A pagar:   R$ {total_pag}\n"
-        f"  ✅ Recebido:  R$ {recebido}\n"
-        f"  ✅ Pago:      R$ {pago}\n"
-        f"  💰 Resultado: R$ {resultado}\n"
+        f"☀️ *Bom dia\\! Relatório de {_esc(hoje.strftime('%d/%m/%Y'))}*\n\n"
+        f"📊 *Mês atual \\({_esc(resumo['periodo'])}\\):*\n"
+        f"  📥 A receber: R$ {_esc('{:.2f}'.format(resumo['total_receber']))}\n"
+        f"  📤 A pagar:   R$ {_esc('{:.2f}'.format(resumo['total_pagar']))}\n"
+        f"  ✅ Recebido:  R$ {_esc('{:.2f}'.format(resumo['recebido']))}\n"
+        f"  ✅ Pago:      R$ {_esc('{:.2f}'.format(resumo['pago']))}\n"
+        f"  💰 Resultado: R$ {_esc('{:.2f}'.format(resumo['resultado']))}\n"
         f"{alerta_saldo}\n"
         f"📅 *Próximos 7 dias:*\n{linhas_pend}\n\n"
         f"🚨 *Atrasados:*\n{linhas_atras}"
     )
 
-    # ── Envia ─────────────────────────────────────────────────────────────────
+    await _enviar(app, chat_id, msg, fallback=lambda: _plain_diario(hoje, resumo, pend, atras))
+
+
+def _plain_diario(hoje, resumo, pend, atras):
+    return (
+        f"Relatório de {hoje.strftime('%d/%m/%Y')}\n\n"
+        f"Mês ({resumo['periodo']}):\n"
+        f"  A receber: R$ {resumo['total_receber']:.2f}\n"
+        f"  A pagar:   R$ {resumo['total_pagar']:.2f}\n"
+        f"  Resultado: R$ {resumo['resultado']:.2f}\n\n"
+        f"Pendentes 7d: {len(pend)} | Atrasados: {len(atras)}"
+    )
+
+
+# ─── Relatório semanal ────────────────────────────────────────────────────────
+
+async def _relatorio_semanal(app, chat_id: int):
+    from datetime import timedelta
+    from consulta_financeira import _buscar, _valor_pago, STATUS_RECEBIDO
+
+    fim = date.today()
+    ini = fim - timedelta(days=6)
+    p = {"data_vencimento_de": str(ini), "data_vencimento_ate": str(fim)}
+    rec = _buscar("contas-a-receber/buscar", p)
+    pag = _buscar("contas-a-pagar/buscar",   p)
+    recebido = sum(_valor_pago(i) for i in rec if i.get("status") in STATUS_RECEBIDO)
+    pago     = sum(_valor_pago(i) for i in pag if i.get("status") in STATUS_RECEBIDO)
+    res = recebido - pago
+
+    msg = (
+        f"📆 *Relatório semanal* \\({_esc(ini.strftime('%d/%m'))} a {_esc(fim.strftime('%d/%m'))}\\)\n\n"
+        f"  📥 Recebido: R$ {_esc('{:.2f}'.format(recebido))}\n"
+        f"  📤 Pago:     R$ {_esc('{:.2f}'.format(pago))}\n"
+        f"  💰 Saldo:    R$ {_esc('{:.2f}'.format(res))}\n\n"
+        f"Lançamentos: {len(rec)} a receber, {len(pag)} a pagar."
+    )
+    await _enviar(app, chat_id, msg,
+                  fallback=lambda: f"Semana {ini}–{fim}: recebido {recebido:.2f}, pago {pago:.2f}, saldo {res:.2f}")
+
+
+# ─── Relatório mensal ─────────────────────────────────────────────────────────
+
+async def _relatorio_mensal(app, chat_id: int):
+    from consulta_financeira import resumo_mes
+    hoje = date.today()
+    # Só executa se for o último dia do mês (cron day="last" já garante,
+    # mas validamos por segurança).
+    if hoje.day != monthrange(hoje.year, hoje.month)[1]:
+        return
+    resumo = resumo_mes()
+    msg = (
+        f"📅 *Fechamento mensal* — {_esc(hoje.strftime('%B/%Y'))}\n\n"
+        f"  📥 A receber: R$ {_esc('{:.2f}'.format(resumo['total_receber']))}\n"
+        f"  📤 A pagar:   R$ {_esc('{:.2f}'.format(resumo['total_pagar']))}\n"
+        f"  ✅ Recebido:  R$ {_esc('{:.2f}'.format(resumo['recebido']))}\n"
+        f"  ✅ Pago:      R$ {_esc('{:.2f}'.format(resumo['pago']))}\n"
+        f"  💰 Resultado: R$ {_esc('{:.2f}'.format(resumo['resultado']))}\n\n"
+        f"Atrasados: {resumo['atrasados_receber']} a receber, {resumo['atrasados_pagar']} a pagar\\."
+    )
+    await _enviar(app, chat_id, msg,
+                  fallback=lambda: f"Fechamento {hoje.strftime('%m/%Y')}: resultado {resumo['resultado']:.2f}")
+
+
+# ─── Alertas de orçamento ─────────────────────────────────────────────────────
+
+async def _checar_orcamento(app, chat_id: int):
     try:
-        await app.bot.send_message(
-            chat_id=chat_id,
-            text=msg,
-            parse_mode="MarkdownV2",
-        )
-        print(f"[SCHEDULER] Relatório enviado para chat_id={chat_id}.")
+        from orcamento import checar_alertas
+        novos = checar_alertas()
     except Exception as e:
-        print(f"[SCHEDULER] Erro ao enviar relatório: {e}")
-        try:
-            msg_plain = (
-                f"Bom dia! Relatório de {hoje.strftime('%d/%m/%Y')}\n\n"
-                f"Mês atual ({resumo['periodo']}):\n"
-                f"  A receber: R$ {resumo['total_receber']:.2f}\n"
-                f"  A pagar:   R$ {resumo['total_pagar']:.2f}\n"
-                f"  Recebido:  R$ {resumo['recebido']:.2f}\n"
-                f"  Pago:      R$ {resumo['pago']:.2f}\n"
-                f"  Resultado: R$ {resumo['resultado']:.2f}\n\n"
-                f"Pendentes 7 dias: {len(pend)}\n"
-                f"Atrasados: {len(atras)}"
-            )
-            await app.bot.send_message(chat_id=chat_id, text=msg_plain)
-            print("[SCHEDULER] Relatório enviado em plain text (fallback).")
-        except Exception as e2:
-            print(f"[SCHEDULER] Falha total: {e2}")
+        print(f"[SCHEDULER] Erro checagem orçamento: {e}")
+        return
+    if not novos:
+        return
+    linhas = []
+    for a in novos:
+        emoji = "🚨" if a["nivel"] == "100" else "⚠️"
+        pct_str = "{:.0f}".format(a["pct"])
+        linhas.append(
+            f"{emoji} *{_esc(a['categoria'])}*: "
+            f"R$ {_esc('{:.2f}'.format(a['gasto']))} de R$ {_esc('{:.2f}'.format(a['limite']))} "
+            f"\\({_esc(pct_str)}%\\)"
+        )
+    msg = "💡 *Alerta de orçamento*\n\n" + "\n".join(linhas)
+    await _enviar(app, chat_id, msg,
+                  fallback=lambda: "Alerta de orçamento: " + "; ".join(
+                      f"{a['categoria']} {a['pct']:.0f}%" for a in novos))
+
+
+# ─── Helper de envio com fallback plain ───────────────────────────────────────
+
+async def _enviar(app, chat_id, msg_md, fallback=None):
+    try:
+        await app.bot.send_message(chat_id=chat_id, text=msg_md, parse_mode="MarkdownV2")
+    except Exception as e:
+        print(f"[SCHEDULER] Erro envio MarkdownV2: {e}")
+        if fallback:
+            try:
+                await app.bot.send_message(chat_id=chat_id, text=fallback())
+            except Exception as e2:
+                print(f"[SCHEDULER] Falha total: {e2}")
