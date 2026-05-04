@@ -1,0 +1,86 @@
+name: 🤖 Bot Telegram - Run
+
+on:
+  workflow_dispatch:        # start manual
+  schedule:
+    - cron: "0 */5 * * *"  # reinicia a cada 5h automaticamente
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300    # 5 horas = limite seguro antes do cron reiniciar
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Restaurar tokens.json
+        env:
+          CONTA_AZUL_TOKENS: ${{ secrets.CONTA_AZUL_TOKENS }}
+        run: |
+          echo "$CONTA_AZUL_TOKENS" > tokens.json
+          echo "tokens.json restaurado:"
+          python -c "import json; d=json.load(open('tokens.json')); print(f'  expires_at: {d[\"expires_at\"]}')"
+
+      - name: Rodar bot
+        env:
+          TELEGRAM_TOKEN:           ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_ALLOWED_CHAT_ID }}
+          GEMINI_API_KEY:           ${{ secrets.GEMINI_API_KEY }}
+          CONTA_AZUL_CLIENT_ID:     ${{ secrets.CONTA_AZUL_CLIENT_ID }}
+          CONTA_AZUL_CLIENT_SECRET: ${{ secrets.CONTA_AZUL_CLIENT_SECRET }}
+          CONTA_AZUL_TOKENS:        ${{ secrets.CONTA_AZUL_TOKENS }}
+          GH_TOKEN:                 ${{ secrets.GH_PAT }}
+          GH_REPO:                  ${{ github.repository }}
+          SUGESTAO_BOOST_CONTA:             ${{ secrets.SUGESTAO_BOOST_CONTA }}
+          SUGESTAO_BOOST_CATEGORIA_RECEITA: ${{ secrets.SUGESTAO_BOOST_CATEGORIA_RECEITA }}
+          SUGESTAO_BOOST_CATEGORIA_DESPESA: ${{ secrets.SUGESTAO_BOOST_CATEGORIA_DESPESA }}
+        run: python bot.py
+
+      - name: Salvar tokens renovados de volta no secret
+        if: always()   # salva mesmo se o bot crashar
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          REPO:     ${{ github.repository }}
+        run: |
+          python - <<'EOF'
+          import os, json, base64, requests
+          from nacl import encoding, public
+
+          if not os.path.exists("tokens.json"):
+              print("tokens.json não encontrado, nada a salvar.")
+              exit(0)
+
+          tokens_json = open("tokens.json").read()
+          GH_TOKEN    = os.environ["GH_TOKEN"]
+          REPO        = os.environ["REPO"]
+
+          headers = {
+              "Authorization": f"Bearer {GH_TOKEN}",
+              "Accept":        "application/vnd.github+json",
+          }
+
+          pub = requests.get(
+              f"https://api.github.com/repos/{REPO}/actions/secrets/public-key",
+              headers=headers,
+          ).json()
+
+          pk        = public.PublicKey(pub["key"].encode(), encoding.Base64Encoder())
+          encrypted = base64.b64encode(
+              public.SealedBox(pk).encrypt(tokens_json.encode())
+          ).decode()
+
+          r = requests.put(
+              f"https://api.github.com/repos/{REPO}/actions/secrets/CONTA_AZUL_TOKENS",
+              headers=headers,
+              json={"encrypted_value": encrypted, "key_id": pub["key_id"]},
+          )
+          r.raise_for_status()
+          print("✅ CONTA_AZUL_TOKENS atualizado no GitHub Secret!")
+          EOF
