@@ -1,17 +1,25 @@
-import asyncio, logging, os, signal, threading, json
+import asyncio, logging, os, signal, threading, json, io
 from datetime import date
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, filters, ContextTypes,
 )
 from config import TELEGRAM_TOKEN, TELEGRAM_ALLOWED_CHAT_ID
-from gemini_client import extrair_lancamento, extrair_de_imagem, responder_consulta
-from fluxo_lancamento import iniciar_selecao, callback_selecao, receber_texto_livre
-from contaazul_client import criar_lancamento, _post, _rateio, _sanitizar, BASE
+from gemini_client import (
+    extrair_lancamento, extrair_de_imagem, responder_consulta,
+    extrair_de_audio,
+)
+from fluxo_lancamento import (
+    iniciar_selecao, callback_selecao, receber_texto_livre,
+    callback_editar, limpar_estado,
+)
+from contaazul_client import criar_lancamento
 from consulta_financeira import resumo_mes, pendentes, atrasados, _valor
 from catalogo import invalidar_cache, contas_financeiras, categorias_receita, categorias_despesa, centros_custo
 from scheduler import iniciar
+from baixa_flow import iniciar_baixa, callback_baixa
+import graficos, export, busca, orcamento
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,16 +42,23 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(
         "👋 *Assistente Financeiro IA*\n\n"
-        "Pode falar naturalmente! Exemplos:\n"
+        "Pode falar (texto, áudio, foto ou PDF). Exemplos:\n"
         '• _"Receber R$ 500 de João vence 20/05"_\n'
-        '• _"Pagar conta de luz R$ 220 vence 15/05"_\n'
-        '• _"Quanto gastei este mês?"_\n\n'
-        "📌 *Comandos disponíveis:*\n"
-        "/pendentes — contas a vencer\n"
-        "/atrasados — contas em atraso\n"
-        "/relatorio — resumo do dia\n"
-        "/catalogo  — ver categorias e contas\n"
-        "/manual    — lançamento guiado",
+        '• _"Paguei o aluguel"_  → dá baixa\n'
+        '• _"Gráfico de despesas do mês"_\n'
+        '• _"Quanto paguei pra fornecedor X em 2026?"_\n'
+        '• _"Definir orçamento mercado 800"_\n\n'
+        "📌 *Comandos:*\n"
+        "/pendentes  — contas a vencer\n"
+        "/atrasados  — contas em atraso\n"
+        "/relatorio  — resumo do dia\n"
+        "/grafico    — visualizações\n"
+        "/orcamento  — orçamentos por categoria\n"
+        "/buscar     — busca livre\n"
+        "/export     — exportar planilha\n"
+        "/baixa      — dar baixa em parcela\n"
+        "/catalogo   — categorias e contas\n"
+        "/manual     — lançamento guiado",
         parse_mode="Markdown",
     )
 
@@ -125,6 +140,144 @@ async def cmd_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
     )
 
+
+# ─── Novos comandos ──────────────────────────────────────────────────────────
+
+async def cmd_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _ok(update):
+        return
+    botoes = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Receita vs Despesa (6 meses)", callback_data="graf:meses")],
+        [InlineKeyboardButton("📤 Despesas por categoria",       callback_data="graf:cat_pag")],
+        [InlineKeyboardButton("📥 Receitas por categoria",       callback_data="graf:cat_rec")],
+        [InlineKeyboardButton("💸 Fluxo de caixa (30 dias)",     callback_data="graf:fluxo")],
+    ])
+    await update.message.reply_text("📈 Escolha o gráfico:", reply_markup=botoes)
+
+
+async def callback_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    tipo = query.data.split(":")[1]
+    await query.edit_message_text("⏳ Gerando gráfico...")
+    try:
+        if tipo == "meses":
+            png = graficos.grafico_meses(6)
+        elif tipo == "cat_pag":
+            png = graficos.grafico_categorias("PAGAR")
+        elif tipo == "cat_rec":
+            png = graficos.grafico_categorias("RECEBER")
+        else:
+            png = graficos.grafico_fluxo_caixa(30)
+        await context.bot.send_photo(chat_id=query.message.chat_id, photo=io.BytesIO(png))
+    except Exception as e:
+        await query.edit_message_text(f"❌ Erro ao gerar: {e}")
+
+
+async def cmd_orcamento(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _ok(update):
+        return
+    args = context.args or []
+    if len(args) >= 2:
+        try:
+            limite = float(args[-1].replace(",", ".").replace("R$", "").strip())
+            categoria = " ".join(args[:-1])
+            orcamento.definir(categoria, limite)
+            await update.message.reply_text(f"✅ Orçamento '{categoria}' = R$ {limite:.2f}")
+            return
+        except ValueError:
+            await update.message.reply_text("Uso: /orcamento <categoria> <valor>")
+            return
+
+    if len(args) == 1 and args[0].lower() in ("rm", "remover", "del"):
+        await update.message.reply_text("Use: /orcamento_remover <categoria>")
+        return
+
+    await _mostrar_orcamento(update.message)
+
+
+async def cmd_orcamento_remover(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _ok(update):
+        return
+    if not context.args:
+        await update.message.reply_text("Uso: /orcamento_remover <categoria>")
+        return
+    cat = " ".join(context.args)
+    if orcamento.remover(cat):
+        await update.message.reply_text(f"🗑️ Removido: {cat}")
+    else:
+        await update.message.reply_text(f"❌ Não encontrei: {cat}")
+
+
+async def _mostrar_orcamento(message):
+    status = orcamento.status_atual()
+    if not status:
+        await message.reply_text(
+            "💰 Nenhum orçamento definido.\n"
+            "Use: `/orcamento <categoria> <valor>`\nEx: `/orcamento mercado 800`",
+            parse_mode="Markdown",
+        )
+        return
+    linhas = []
+    for s in status:
+        emoji = "🟢" if s["pct"] < 80 else "🟡" if s["pct"] < 100 else "🔴"
+        linhas.append(
+            f"{emoji} *{s['categoria']}*: R$ {s['gasto']:.2f} / R$ {s['limite']:.2f} ({s['pct']:.0f}%)"
+        )
+    await message.reply_text("💰 *Orçamento do mês*\n\n" + "\n".join(linhas),
+                             parse_mode="Markdown")
+
+
+async def cmd_buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _ok(update):
+        return
+    if not context.args:
+        await update.message.reply_text("Uso: `/buscar <termo>` (ex: `/buscar fornecedor X 2026`)",
+                                        parse_mode="Markdown")
+        return
+    termo = " ".join(context.args)
+    await _executar_busca(update.message, termo)
+
+
+async def _executar_busca(message, termo: str):
+    await message.reply_text(f"🔎 Buscando '{termo}'...")
+    try:
+        ini, fim = busca.parse_periodo_livre(termo)
+        r = busca.buscar(termo, ini, fim)
+        await message.reply_text(busca.formatar_resumo(termo, r),
+                                 parse_mode="Markdown")
+    except Exception as e:
+        await message.reply_text(f"❌ Erro na busca: {e}")
+
+
+async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _ok(update):
+        return
+    arg = " ".join(context.args) if context.args else ""
+    await _executar_export(update.message, arg)
+
+
+async def _executar_export(message, periodo_txt: str):
+    ini, fim = export.parse_periodo(periodo_txt)
+    await message.reply_text(f"📦 Gerando export {ini.strftime('%m/%Y')}...")
+    try:
+        conteudo, nome = export.exportar_xlsx(ini, fim)
+        await message.reply_document(document=io.BytesIO(conteudo), filename=nome)
+    except Exception as e:
+        await message.reply_text(f"❌ Erro ao exportar: {e}")
+
+
+async def cmd_baixa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _ok(update):
+        return
+    if not context.args:
+        await update.message.reply_text("Uso: `/baixa <descrição>` (ex: `/baixa aluguel`)",
+                                        parse_mode="Markdown")
+        return
+    termo = " ".join(context.args)
+    await iniciar_baixa(update, context, termo, tipo="PAGAR")
+
+
 # ─── Callbacks de lançamento ──────────────────────────────────────────────────
 
 async def callback_lancar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,88 +290,129 @@ async def callback_lancar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dados   = context.bot_data.pop(f"lancamento_{chat_id}", None)
 
     if acao == "nao" or not dados:
+        limpar_estado(chat_id)
         await query.edit_message_text("❌ Lançamento cancelado.")
         return
 
+    limpar_estado(chat_id)
     await query.edit_message_text("⏳ Lançando no Conta Azul...")
     resultado = criar_lancamento(dados)
 
     if resultado["ok"]:
         tipo_emoji = "📥" if dados["tipo"] == "RECEBER" else "📤"
         await query.edit_message_text(
-            f"✅ {tipo_emoji} *Lançamento criado com sucesso!*\n"
-            f"ID: `{resultado.get('id', '?')}`",
+            f"✅ {tipo_emoji} *Lançamento criado!*\nID: `{resultado.get('id', '?')}`",
             parse_mode="Markdown",
         )
-
     elif resultado.get("erro") == "DUPLICATA":
         context.bot_data[f"lancamento_{chat_id}"] = dados
         await query.edit_message_text(
-            f"⚠️ *Possível duplicata detectada!*\n"
-            f"{resultado['mensagem']}\n\n"
-            f"Deseja lançar mesmo assim?",
+            f"⚠️ *Possível duplicata!*\n{resultado['mensagem']}\n\nLançar mesmo assim?",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("✅ Forçar mesmo assim", callback_data=f"forcar:{chat_id}"),
-                InlineKeyboardButton("❌ Cancelar",           callback_data=f"lancar:nao:{chat_id}"),
+                InlineKeyboardButton("✅ Forçar", callback_data=f"forcar:{chat_id}"),
+                InlineKeyboardButton("❌ Cancelar", callback_data=f"lancar:nao:{chat_id}"),
             ]]),
         )
-
     else:
-        await query.edit_message_text(
-            f"❌ Erro: {resultado.get('erro', 'Desconhecido')}"
-        )
+        await query.edit_message_text(f"❌ Erro: {resultado.get('erro', 'Desconhecido')}")
 
 
 async def callback_forcar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query   = update.callback_query
+    """Reusa criar_lancamento(forcar=True) — garante mesma lógica de parcelas/contato/centro."""
+    query = update.callback_query
     await query.answer()
 
     chat_id = int(query.data.split(":")[1])
     dados   = context.bot_data.pop(f"lancamento_{chat_id}", None)
-
     if not dados:
         await query.edit_message_text("⚠️ Sessão expirada.")
         return
 
+    limpar_estado(chat_id)
     await query.edit_message_text("⏳ Lançando (forçado)...")
+    resultado = criar_lancamento(dados, forcar=True)
 
-    valor    = float(dados["valor"])
-    parcelas = int(dados.get("parcelas", 1))
-    venc     = dados["vencimento"]
-    titulo   = _sanitizar(dados["titulo"])
-    valor_p  = round(valor / parcelas, 2)
-    venc_dt  = date.fromisoformat(venc)
+    if resultado["ok"]:
+        await query.edit_message_text(
+            f"✅ Lançado! ID: `{resultado.get('id', '?')}`",
+            parse_mode="Markdown",
+        )
+    else:
+        await query.edit_message_text(f"❌ Erro: {resultado.get('erro', 'Desconhecido')}")
 
-    parcelas_body = [
-        {
-            "descricao":        _sanitizar(f"{titulo} ({n + 1}/{parcelas})"),
-            "data_vencimento":  str(venc_dt),
-            "nota":             "Lançamento forçado",
-            "conta_financeira": dados.get("conta_id"),
-            "detalhe_valor":    {"valor_bruto": valor_p, "valor_liquido": valor_p},
-        }
-        for n in range(parcelas)
-    ]
 
-    body = {
-        "data_competencia":   venc,
-        "valor":              valor,
-        "descricao":          titulo,
-        "observacao":         "Lançamento forçado via bot",
-        "conta_financeira":   dados.get("conta_id"),
-        "rateio":             _rateio(dados.get("categoria_id"), valor, dados.get("centro_id")),
-        "condicao_pagamento": {"parcelas": parcelas_body},
-    }
+# ─── Despachante de ações detectadas pela IA ─────────────────────────────────
 
-    endpoint = "contas-a-receber" if dados["tipo"] == "RECEBER" else "contas-a-pagar"
-    r = _post(f"{BASE}/{endpoint}", body)
-    await query.edit_message_text(
-        f"✅ Lançado! ID: `{r.get('protocolId', '?')}`",
-        parse_mode="Markdown",
-    )
+async def _despachar_acao(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                          texto: str, dados: dict):
+    acao = dados.get("acao", "INDEFINIDO")
+    msg = update.message
 
-# ─── Handler de mensagens de texto ────────────────────────────────────────────
+    if acao in ("RECEBER", "PAGAR"):
+        await iniciar_selecao(update, context, {
+            "tipo":        acao,
+            "titulo":      dados.get("titulo", texto[:50]),
+            "valor":       dados.get("valor", 0),
+            "vencimento":  dados.get("vencimento", str(date.today())),
+            "parcelas":    dados.get("parcelas", 1),
+            "termo_extra": dados.get("termo_extra", ""),
+        })
+    elif acao == "PENDENTES":
+        await cmd_pendentes(update, context)
+    elif acao == "ATRASADOS":
+        await cmd_atrasados(update, context)
+    elif acao == "RELATORIO":
+        await cmd_relatorio(update, context)
+    elif acao == "BAIXA":
+        termo = dados.get("termo_extra") or dados.get("titulo") or texto
+        await iniciar_baixa(update, context, termo, tipo="PAGAR")
+    elif acao == "GRAFICO":
+        sub = (dados.get("termo_extra") or "").lower()
+        await msg.reply_text("⏳ Gerando gráfico...")
+        try:
+            if "categoria_despesa" in sub or "despesa" in sub:
+                png = graficos.grafico_categorias("PAGAR")
+            elif "categoria_receita" in sub or "receita" in sub:
+                png = graficos.grafico_categorias("RECEBER")
+            elif "fluxo" in sub or "caixa" in sub:
+                png = graficos.grafico_fluxo_caixa(30)
+            else:
+                png = graficos.grafico_meses(6)
+            await context.bot.send_photo(chat_id=msg.chat_id, photo=io.BytesIO(png))
+        except Exception as e:
+            await msg.reply_text(f"❌ Erro: {e}")
+    elif acao == "ORCAMENTO":
+        cat = (dados.get("categoria") or "").strip()
+        lim = dados.get("limite")
+        if cat and lim:
+            try:
+                orcamento.definir(cat, float(lim))
+                await msg.reply_text(f"✅ Orçamento '{cat}' = R$ {float(lim):.2f}")
+            except Exception as e:
+                await msg.reply_text(f"❌ {e}")
+        else:
+            await _mostrar_orcamento(msg)
+    elif acao == "BUSCA":
+        termo = dados.get("termo_extra") or texto
+        await _executar_busca(msg, termo)
+    elif acao == "EXPORT":
+        await _executar_export(msg, dados.get("periodo", ""))
+    elif acao == "CONSULTA":
+        resumo = resumo_mes()
+        ctx = json.dumps(
+            {k: v for k, v in resumo.items() if k not in ("contas_receber", "contas_pagar")},
+            ensure_ascii=False,
+        )
+        resp = responder_consulta(texto, ctx)
+        await msg.reply_text(resp)
+    else:
+        await msg.reply_text(
+            dados.get("mensagem") or "Não entendi. Tente reformular ou use /manual."
+        )
+
+
+# ─── Handler de texto ────────────────────────────────────────────────────────
 
 async def handle_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _ok(update):
@@ -234,49 +428,26 @@ async def handle_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     texto = update.message.text.strip()
     await update.message.reply_text("🤔 Analisando...")
-
     dados = extrair_lancamento(texto)
-    acao  = dados.get("acao", "INDEFINIDO")
+    await _despachar_acao(update, context, texto, dados)
 
-    if acao in ("RECEBER", "PAGAR"):
-        await iniciar_selecao(update, context, {
-            "tipo":        acao,
-            "titulo":      dados.get("titulo", texto[:50]),
-            "valor":       dados.get("valor", 0),
-            "vencimento":  dados.get("vencimento", str(date.today())),
-            "parcelas":    dados.get("parcelas", 1),
-            "termo_extra": dados.get("termo_extra", ""),
-        })
 
-    elif acao == "PENDENTES":
-        await cmd_pendentes(update, context)
+# ─── Handler de áudio (voz) ──────────────────────────────────────────────────
 
-    elif acao == "ATRASADOS":
-        await cmd_atrasados(update, context)
+async def handle_voz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _ok(update):
+        return
+    await update.message.reply_text("🎙️ Ouvindo áudio...")
+    audio = update.message.voice or update.message.audio
+    file = await context.bot.get_file(audio.file_id)
+    audio_bytes = bytes(await file.download_as_bytearray())
+    mime = getattr(audio, "mime_type", None) or "audio/ogg"
 
-    elif acao == "RELATORIO":
-        await cmd_relatorio(update, context)
+    transcricao, dados = extrair_de_audio(audio_bytes, mime)
+    if transcricao:
+        await update.message.reply_text(f"🗣️ _\"{transcricao}\"_", parse_mode="Markdown")
+    await _despachar_acao(update, context, transcricao or "", dados)
 
-    elif acao == "BAIXA":
-        await update.message.reply_text(
-            "🔎 Me diga o nome ou valor do lançamento que deseja dar baixa "
-            "e eu vou localizar para você."
-        )
-
-    elif acao == "CONSULTA":
-        resumo = resumo_mes()
-        ctx    = json.dumps(
-            {k: v for k, v in resumo.items() if k not in ("contas_receber", "contas_pagar")},
-            ensure_ascii=False,
-        )
-        resp = responder_consulta(texto, ctx)
-        await update.message.reply_text(resp)
-
-    else:
-        msg = dados.get("mensagem", "")
-        await update.message.reply_text(
-            msg or "Não entendi. Tente descrever o lançamento ou use /manual."
-        )
 
 # ─── Handler de documentos e fotos ───────────────────────────────────────────
 
@@ -289,21 +460,7 @@ async def handle_documento(update: Update, context: ContextTypes.DEFAULT_TYPE):
     img_bytes = await file.download_as_bytearray()
     mime      = doc.mime_type or "application/octet-stream"
     dados     = extrair_de_imagem(bytes(img_bytes), mime)
-    acao      = dados.get("acao", "INDEFINIDO")
-
-    if acao in ("RECEBER", "PAGAR"):
-        await iniciar_selecao(update, context, {
-            "tipo":        acao,
-            "titulo":      dados.get("titulo", "Documento"),
-            "valor":       dados.get("valor", 0),
-            "vencimento":  dados.get("vencimento", str(date.today())),
-            "parcelas":    dados.get("parcelas", 1),
-            "termo_extra": dados.get("termo_extra", ""),
-        })
-    else:
-        await update.message.reply_text(
-            dados.get("mensagem", "Não consegui extrair os dados do documento.")
-        )
+    await _despachar_acao(update, context, dados.get("titulo", "Documento"), dados)
 
 
 async def handle_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -313,21 +470,8 @@ async def handle_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     foto  = update.message.photo[-1]
     file  = await context.bot.get_file(foto.file_id)
     dados = extrair_de_imagem(await file.download_as_bytearray(), "image/jpeg")
-    acao  = dados.get("acao", "INDEFINIDO")
+    await _despachar_acao(update, context, dados.get("titulo", "Foto"), dados)
 
-    if acao in ("RECEBER", "PAGAR"):
-        await iniciar_selecao(update, context, {
-            "tipo":        acao,
-            "titulo":      dados.get("titulo", "Foto"),
-            "valor":       dados.get("valor", 0),
-            "vencimento":  dados.get("vencimento", str(date.today())),
-            "parcelas":    dados.get("parcelas", 1),
-            "termo_extra": dados.get("termo_extra", ""),
-        })
-    else:
-        await update.message.reply_text(
-            dados.get("mensagem", "Não consegui extrair os dados da imagem.")
-        )
 
 # ─── Fluxo manual guiado ──────────────────────────────────────────────────────
 
@@ -342,7 +486,6 @@ async def _handle_manual(update: Update, context: ContextTypes.DEFAULT_TYPE, man
             "É uma conta a *receber* ou a *pagar*?\nDigite: receber ou pagar",
             parse_mode="Markdown",
         )
-
     elif etapa == "tipo":
         t = texto.upper()
         if "REC" in t:
@@ -353,20 +496,17 @@ async def _handle_manual(update: Update, context: ContextTypes.DEFAULT_TYPE, man
             await update.message.reply_text("Digite *receber* ou *pagar*.", parse_mode="Markdown")
             return
         manual["etapa"] = "valor"
-        await update.message.reply_text("💰 Qual o *valor*? (ex: 250.00)", parse_mode="Markdown")
-
+        await update.message.reply_text("💰 Qual o *valor*?", parse_mode="Markdown")
     elif etapa == "valor":
         try:
             manual["valor"] = float(texto.replace(",", ".").replace("R$", "").strip())
         except ValueError:
-            await update.message.reply_text("Valor inválido. Tente novamente (ex: 250.00).")
+            await update.message.reply_text("Valor inválido. Tente novamente.")
             return
         manual["etapa"] = "vencimento"
         await update.message.reply_text(
-            "📅 Qual a *data de vencimento*? (ex: 15/05/2026)",
-            parse_mode="Markdown",
+            "📅 *Data de vencimento*? (ex: 15/05/2026)", parse_mode="Markdown",
         )
-
     elif etapa == "vencimento":
         from datetime import datetime
         for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
@@ -377,14 +517,11 @@ async def _handle_manual(update: Update, context: ContextTypes.DEFAULT_TYPE, man
             except ValueError:
                 continue
         else:
-            await update.message.reply_text("Data inválida. Use o formato DD/MM/AAAA.")
+            await update.message.reply_text("Data inválida. Use DD/MM/AAAA.")
             return
         manual["etapa"] = "parcelas"
-        await update.message.reply_text(
-            "🔢 Quantas *parcelas*? (1 para à vista)",
-            parse_mode="Markdown",
-        )
-
+        await update.message.reply_text("🔢 Quantas *parcelas*? (1 para à vista)",
+                                        parse_mode="Markdown")
     elif etapa == "parcelas":
         try:
             manual["parcelas"] = int(texto)
@@ -401,23 +538,19 @@ async def _handle_manual(update: Update, context: ContextTypes.DEFAULT_TYPE, man
             "termo_extra": manual["titulo"],
         })
 
+
 # ─── Auto-shutdown para GitHub Actions ───────────────────────────────────────
 
 def _agendar_shutdown(app: Application):
     if not os.environ.get("GITHUB_ACTIONS"):
         return
-
     MINUTOS = 290
-
     def _timer():
         import time
-        print(f"[SHUTDOWN] Auto-shutdown em {MINUTOS} min (GitHub Actions mode).")
+        print(f"[SHUTDOWN] Auto-shutdown em {MINUTOS} min.")
         time.sleep(MINUTOS * 60)
-        print("[SHUTDOWN] Encerrando bot para reinício automático pelo cron...")
         os.kill(os.getpid(), signal.SIGTERM)
-
-    t = threading.Thread(target=_timer, daemon=True)
-    t.start()
+    threading.Thread(target=_timer, daemon=True).start()
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -430,14 +563,24 @@ def main():
     app.add_handler(CommandHandler("relatorio", cmd_relatorio))
     app.add_handler(CommandHandler("catalogo",  cmd_catalogo))
     app.add_handler(CommandHandler("manual",    cmd_manual))
+    app.add_handler(CommandHandler("grafico",   cmd_grafico))
+    app.add_handler(CommandHandler("orcamento", cmd_orcamento))
+    app.add_handler(CommandHandler("orcamento_remover", cmd_orcamento_remover))
+    app.add_handler(CommandHandler("buscar",    cmd_buscar))
+    app.add_handler(CommandHandler("export",    cmd_export))
+    app.add_handler(CommandHandler("baixa",     cmd_baixa))
 
     app.add_handler(CallbackQueryHandler(callback_selecao, pattern="^sel:"))
     app.add_handler(CallbackQueryHandler(callback_lancar,  pattern="^lancar:"))
     app.add_handler(CallbackQueryHandler(callback_forcar,  pattern="^forcar:"))
+    app.add_handler(CallbackQueryHandler(callback_editar,  pattern="^edit:"))
+    app.add_handler(CallbackQueryHandler(callback_baixa,   pattern="^baixa:"))
+    app.add_handler(CallbackQueryHandler(callback_grafico, pattern="^graf:"))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_mensagem))
-    app.add_handler(MessageHandler(filters.Document.ALL,            handle_documento))
-    app.add_handler(MessageHandler(filters.PHOTO,                   handle_foto))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO,    handle_voz))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,  handle_mensagem))
+    app.add_handler(MessageHandler(filters.Document.ALL,             handle_documento))
+    app.add_handler(MessageHandler(filters.PHOTO,                    handle_foto))
 
     iniciar(app, TELEGRAM_ALLOWED_CHAT_ID)
     _agendar_shutdown(app)
