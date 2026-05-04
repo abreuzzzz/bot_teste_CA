@@ -41,6 +41,7 @@ jobs:
           SUGESTAO_BOOST_CONTA:             ${{ secrets.SUGESTAO_BOOST_CONTA }}
           SUGESTAO_BOOST_CATEGORIA_RECEITA: ${{ secrets.SUGESTAO_BOOST_CATEGORIA_RECEITA }}
           SUGESTAO_BOOST_CATEGORIA_DESPESA: ${{ secrets.SUGESTAO_BOOST_CATEGORIA_DESPESA }}
+          ORCAMENTO_DATA: ${{ secrets.ORCAMENTO_DATA }}
         run: python bot.py
 
       - name: Salvar tokens renovados de volta no secret
