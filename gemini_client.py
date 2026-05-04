@@ -17,25 +17,35 @@ Campos obrigatórios:
   "vencimento": "YYYY-MM-DD",
   "parcelas": int,
   "termo_extra": string,
-  "mensagem": string
+  "mensagem": string,
+  "categoria": string,
+  "periodo": string,
+  "limite": float
 }
 
 Valores possíveis para "acao":
-- "RECEBER"   → usuário quer lançar uma receita/recebimento
-- "PAGAR"     → usuário quer lançar uma despesa/pagamento
-- "BAIXA"     → usuário quer dar baixa em um lançamento existente
-- "PENDENTES" → usuário quer ver contas a vencer (ex: "quais contas vencem essa semana?", "o que tenho para pagar?")
-- "ATRASADOS" → usuário quer ver contas atrasadas (ex: "tenho algo atrasado?", "contas em atraso")
-- "RELATORIO" → usuário quer resumo financeiro (ex: "como estão as finanças?", "resumo do mês", "quanto entrou esse mês?")
-- "CONSULTA"  → pergunta financeira que precisa de análise dos dados (ex: "qual meu saldo?", "quanto gastei com X?")
+- "RECEBER"   → lançar receita/recebimento
+- "PAGAR"     → lançar despesa/pagamento
+- "BAIXA"     → dar baixa em um lançamento existente (ex: "paguei o aluguel", "dei baixa na luz")
+- "PENDENTES" → contas a vencer
+- "ATRASADOS" → contas em atraso
+- "RELATORIO" → resumo financeiro
+- "CONSULTA"  → pergunta financeira que precisa análise
+- "GRAFICO"   → usuário quer visualizar gráfico (ex: "me mostra um gráfico", "gráfico de despesas", "fluxo de caixa visual")
+- "ORCAMENTO" → ver/definir orçamento (ex: "definir orçamento mercado 800", "como está meu orçamento?")
+- "BUSCA"     → busca livre por termo (ex: "quanto paguei pra X em 2026?", "busca fornecedor Y")
+- "EXPORT"    → exportar planilha (ex: "exportar mai/2026", "planilha do mês")
 - "INDEFINIDO"→ não foi possível identificar
 
 Regras:
-- Se for RECEBER ou PAGAR, extraia título, valor, vencimento e parcelas
-- Se não houver vencimento, use a data de hoje
-- Para PENDENTES, ATRASADOS e RELATORIO, não precisa preencher os outros campos
-- Para CONSULTA, coloque a pergunta original em "mensagem"
-- "termo_extra" = palavras-chave úteis para sugerir conta/categoria (ex: "luz", "aluguel", "João")
+- RECEBER/PAGAR: extraia título, valor, vencimento e parcelas. Sem vencimento explícito, use hoje.
+- BAIXA: preencha "termo_extra" com o que identifica a parcela (nome/descrição).
+- GRAFICO: em "termo_extra" coloque o tipo: "meses" (padrão), "categoria_despesa", "categoria_receita", "fluxo_caixa".
+- ORCAMENTO: se for definição, preencha "categoria" e "limite". Se for consulta, deixe ambos vazios.
+- BUSCA: "termo_extra" = palavra-chave a buscar. "periodo" pode conter ano (ex: "2026") ou ficar vazio.
+- EXPORT: "periodo" = ex "mai2026", "05/2026". Vazio = mês atual.
+- CONSULTA: coloque a pergunta original em "mensagem".
+- "termo_extra" sempre = palavras-chave úteis.
 - Hoje é: {hoje}
 """
 
@@ -51,7 +61,7 @@ def _gerar(prompt: str, max_tentativas: int = 3) -> str:
                 m = re.search(r"retry in (\d+)", msg)
                 if m:
                     espera = int(m.group(1)) + 5
-                print(f"[GEMINI] Quota excedida. Aguardando {espera}s (tentativa {tentativa}/{max_tentativas})...")
+                print(f"[GEMINI] Quota excedida. Aguardando {espera}s ({tentativa}/{max_tentativas})...")
                 time.sleep(espera)
                 continue
             raise
@@ -63,7 +73,8 @@ def _parse(raw: str) -> dict:
     try:
         return json.loads(raw)
     except Exception:
-        return {"acao": "INDEFINIDO", "mensagem": raw}
+        return {"acao": "INDEFINIDO",
+                "mensagem": "Não consegui interpretar. Tente reformular ou use /manual."}
 
 
 def extrair_lancamento(texto: str) -> dict:
@@ -82,19 +93,41 @@ def extrair_lancamento(texto: str) -> dict:
 def extrair_de_imagem(imagem_bytes: bytes, mime: str = "image/jpeg") -> dict:
     img_part = {"mime_type": mime, "data": imagem_bytes}
     prompt   = SYSTEM.replace("{hoje}", str(date.today())) + "\n\nExtraia os dados do documento na imagem."
-    try:
-        for tentativa in range(1, 4):
-            try:
-                resp = model.generate_content([prompt, img_part])
-                return _parse(resp.text.strip())
-            except Exception as e:
-                if ("429" in str(e) or "quota" in str(e).lower()) and tentativa < 3:
-                    time.sleep(35)
-                    continue
-                raise
-    except Exception as e:
-        print(f"[GEMINI] Erro imagem: {e}")
-        return {"acao": "INDEFINIDO", "mensagem": "⚠️ IA indisponível. Use /manual."}
+    for tentativa in range(1, 4):
+        try:
+            resp = model.generate_content([prompt, img_part])
+            return _parse(resp.text.strip())
+        except Exception as e:
+            if ("429" in str(e) or "quota" in str(e).lower()) and tentativa < 3:
+                time.sleep(35)
+                continue
+            print(f"[GEMINI] Erro imagem: {e}")
+            return {"acao": "INDEFINIDO", "mensagem": "⚠️ IA indisponível. Use /manual."}
+    return {"acao": "INDEFINIDO", "mensagem": "⚠️ IA indisponível."}
+
+
+def transcrever_audio(audio_bytes: bytes, mime: str = "audio/ogg") -> str:
+    """Transcreve áudio em texto puro usando Gemini."""
+    audio_part = {"mime_type": mime, "data": audio_bytes}
+    prompt = "Transcreva o áudio em português brasileiro. Retorne SOMENTE a transcrição, sem comentários."
+    for tentativa in range(1, 3):
+        try:
+            return model.generate_content([prompt, audio_part]).text.strip()
+        except Exception as e:
+            if ("429" in str(e) or "quota" in str(e).lower()) and tentativa < 2:
+                time.sleep(35)
+                continue
+            print(f"[GEMINI] Erro áudio: {e}")
+            return ""
+    return ""
+
+
+def extrair_de_audio(audio_bytes: bytes, mime: str = "audio/ogg") -> tuple[str, dict]:
+    """Transcreve + interpreta. Retorna (transcricao, dados)."""
+    texto = transcrever_audio(audio_bytes, mime)
+    if not texto:
+        return "", {"acao": "INDEFINIDO", "mensagem": "⚠️ Não consegui entender o áudio."}
+    return texto, extrair_lancamento(texto)
 
 
 def responder_consulta(pergunta: str, contexto_financeiro: str) -> str:
