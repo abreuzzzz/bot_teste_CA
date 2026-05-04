@@ -1,6 +1,7 @@
 import re
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import date
+from consulta_financeira import _valor
 
 
 def _esc(texto: str) -> str:
@@ -34,7 +35,7 @@ async def _relatorio_diario(app, chat_id: int):
         for i in pend[:5]:
             emoji = "📥" if i["tipo"] == "RECEBER" else "📤"
             desc  = _esc(i.get("descricao", "?")[:30])
-            valor = _esc("{:.2f}".format(i.get("valor", 0)))
+            valor = _esc("{:.2f}".format(_valor(i)))
             venc  = _esc(i.get("data_vencimento", ""))
             linhas_pend_list.append(f"  {emoji} {desc} — R$ {valor} \\({venc}\\)")
         linhas_pend = "\n".join(linhas_pend_list)
@@ -46,7 +47,7 @@ async def _relatorio_diario(app, chat_id: int):
         linhas_atras_list = []
         for i in atras[:5]:
             desc  = _esc(i.get("descricao", "?")[:30])
-            valor = _esc("{:.2f}".format(i.get("valor", 0)))
+            valor = _esc("{:.2f}".format(_valor(i)))
             venc  = _esc(i.get("data_vencimento", ""))
             linhas_atras_list.append(f"  ⚠️ {desc} — R$ {valor} \\({venc}\\)")
         linhas_atras = "\n".join(linhas_atras_list)
@@ -60,13 +61,13 @@ async def _relatorio_diario(app, chat_id: int):
         alerta_saldo = f"\n⚠️ *ALERTA: Saldo projetado negativo\\!* R$ {saldo_fmt}\n"
 
     # ── Monta mensagem ────────────────────────────────────────────────────────
-    hoje_fmt     = _esc(hoje.strftime("%d/%m/%Y"))
-    periodo      = _esc(resumo["periodo"])
-    total_rec    = _esc("{:.2f}".format(resumo["total_receber"]))
-    total_pag    = _esc("{:.2f}".format(resumo["total_pagar"]))
-    recebido     = _esc("{:.2f}".format(resumo["recebido"]))
-    pago         = _esc("{:.2f}".format(resumo["pago"]))
-    resultado    = _esc("{:.2f}".format(resumo["resultado"]))
+    hoje_fmt  = _esc(hoje.strftime("%d/%m/%Y"))
+    periodo   = _esc(resumo["periodo"])
+    total_rec = _esc("{:.2f}".format(resumo["total_receber"]))
+    total_pag = _esc("{:.2f}".format(resumo["total_pagar"]))
+    recebido  = _esc("{:.2f}".format(resumo["recebido"]))
+    pago      = _esc("{:.2f}".format(resumo["pago"]))
+    resultado = _esc("{:.2f}".format(resumo["resultado"]))
 
     msg = (
         f"☀️ *Bom dia\\! Relatório de {hoje_fmt}*\n\n"
