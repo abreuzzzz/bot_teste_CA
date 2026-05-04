@@ -7,27 +7,36 @@ estados: dict = {}
 AGUARDANDO_LIVRE = "aguardando_livre"
 
 
+# ─── Helpers de callback_data seguro (máx 64 bytes) ──────────────────────────
+
+def _cb(etapa: str, idx, chat_id: int) -> str:
+    """Gera callback_data curto: sel:conta:0:123456 — sempre < 64 bytes."""
+    return f"sel:{etapa}:{idx}:{chat_id}"
+
+
+def _salvar_opcoes(context, chat_id: int, etapa: str, lista: list):
+    """Persiste as opções no context.user_data para recuperar pelo índice."""
+    if "opcoes" not in context.user_data:
+        context.user_data["opcoes"] = {}
+    context.user_data["opcoes"][etapa] = lista
+
+
+def _opcao(context, etapa: str, idx: int) -> dict:
+    """Recupera a opção pelo índice salvo."""
+    return context.user_data.get("opcoes", {}).get(etapa, [])[idx]
+
+
 # ─── Entrada pública ──────────────────────────────────────────────────────────
 
 async def iniciar_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE, dados: dict):
-    """
-    dados = {
-      "tipo": "RECEBER" | "PAGAR",
-      "titulo": str,
-      "valor": float,
-      "vencimento": str,   # "YYYY-MM-DD"
-      "parcelas": int,
-      "termo_extra": str,  # termo livre extraído pela IA (opcional)
-    }
-    """
     chat_id = update.message.chat_id
     estados[chat_id] = {
         "etapa": "conta",
         "dados": {
             **dados,
-            "conta_id":     None, "conta_nome":     None,
-            "categoria_id": None, "categoria_nome": None,
-            "centro_id":    None, "centro_nome":    None,
+            "conta_id":       None, "conta_nome":       None,
+            "categoria_id":   None, "categoria_nome":   None,
+            "centro_id":      None, "centro_nome":      None,
         },
     }
     await _perguntar(update.message, context, chat_id)
@@ -42,12 +51,14 @@ async def callback_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⚠️ Sessão expirada. Refaça o lançamento.")
         return
 
-    partes = query.data.split(":", 3)
-    _, etapa, id_val, nome = partes[0], partes[1], partes[2], partes[3]
-    estado = estados[chat_id]
+    # formato: sel:etapa:idx_ou_especial:chat_id
+    partes  = query.data.split(":")
+    etapa   = partes[1]
+    idx_str = partes[2]
+    estado  = estados[chat_id]
 
-    if id_val == "LIVRE":
-        estado["etapa"] = AGUARDANDO_LIVRE
+    if idx_str == "LIVRE":
+        estado["etapa"]      = AGUARDANDO_LIVRE
         estado["etapa_livre"] = etapa
         estado["lista_livre"] = _lista_para(etapa, estado["dados"]["tipo"])
         await query.edit_message_text(
@@ -57,13 +68,15 @@ async def callback_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if id_val == "PULAR":
+    if idx_str == "PULAR":
         _salvar(estado, etapa, None, None)
         await query.edit_message_text(f"⏭️ *{_label(etapa)}* pulada.", parse_mode="Markdown")
     else:
-        _salvar(estado, etapa, id_val, nome)
+        # Recupera item real pelo índice
+        item = _opcao(context, etapa, int(idx_str))
+        _salvar(estado, etapa, item["id"], item["nome"])
         await query.edit_message_text(
-            f"✅ *{_label(etapa)}* selecionada: *{nome}*",
+            f"✅ *{_label(etapa)}* selecionada: *{item['nome']}*",
             parse_mode="Markdown",
         )
 
@@ -71,10 +84,7 @@ async def callback_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def receber_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """
-    Deve ser chamado no handler principal ANTES da IA.
-    Retorna True se consumiu a mensagem.
-    """
+    """Deve ser chamado no handler principal ANTES da IA. Retorna True se consumiu a mensagem."""
     chat_id = update.message.chat_id
     estado  = estados.get(chat_id)
     if not estado or estado.get("etapa") != AGUARDANDO_LIVRE:
@@ -96,13 +106,15 @@ async def receber_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         sugestoes = top3(lista, texto)
         if sugestoes:
+            # Salva sugestões e usa índice no callback
+            _salvar_opcoes(context, chat_id, etapa, sugestoes)
             botoes = [
-                [InlineKeyboardButton(s["nome"], callback_data=f"sel:{etapa}:{s['id']}:{s['nome']}")]
-                for s in sugestoes
+                [InlineKeyboardButton(s["nome"], callback_data=_cb(etapa, idx, chat_id))]
+                for idx, s in enumerate(sugestoes)
             ]
-            botoes.append([InlineKeyboardButton("⏭️ Pular", callback_data=f"sel:{etapa}:PULAR:")])
+            botoes.append([InlineKeyboardButton("⏭️ Pular", callback_data=_cb(etapa, "PULAR", chat_id))])
             await update.message.reply_text(
-                f"🔍 Não achei exatamente *\"{texto}\"*. Você quis dizer?",
+                f'🔍 Não achei exatamente *"{texto}"*. Você quis dizer?',
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(botoes),
             )
@@ -132,21 +144,24 @@ async def _perguntar(msg_or_query, context, chat_id: int):
         sugestoes = sugerir_centro(termo)
         titulo    = "🏷️ *Centro de Custo*"
 
+    # Persiste lista para recuperar pelo índice no callback
+    _salvar_opcoes(context, chat_id, etapa, sugestoes)
+
     botoes = [
         [InlineKeyboardButton(
             f"{'✅' if i == 0 else '🔹'} {s['nome']}",
-            callback_data=f"sel:{etapa}:{s['id']}:{s['nome']}"
+            callback_data=_cb(etapa, i, chat_id),
         )]
         for i, s in enumerate(sugestoes)
     ]
     botoes.append([
-        InlineKeyboardButton("✏️ Outra (digitar)", callback_data=f"sel:{etapa}:LIVRE:"),
-        InlineKeyboardButton("⏭️ Pular",           callback_data=f"sel:{etapa}:PULAR:"),
+        InlineKeyboardButton("✏️ Outra (digitar)", callback_data=_cb(etapa, "LIVRE",  chat_id)),
+        InlineKeyboardButton("⏭️ Pular",           callback_data=_cb(etapa, "PULAR",  chat_id)),
     ])
 
     texto = (
         f"{titulo}\n"
-        f"Sugestões baseadas em *\"{termo}\"*:\n\n"
+        f'Sugestões baseadas em *"{termo}"*:\n\n'
         f"Escolha uma ou clique em *Outra* para digitar:"
     )
 
@@ -194,8 +209,10 @@ async def _confirmar(update_or_query, context, chat_id: int):
     ]])
 
     context.bot_data[f"lancamento_{chat_id}"] = dados
+    estados.pop(chat_id, None)  # limpa estado após confirmar
 
-    send = getattr(_msg(update_or_query), "reply_text", None)
+    msg = _msg(update_or_query)
+    send = getattr(msg, "reply_text", None)
     if send:
         await send(resumo, parse_mode="Markdown", reply_markup=botoes)
     else:
@@ -216,13 +233,17 @@ def _salvar(estado, etapa, id_val, nome):
 
 
 def _lista_para(etapa: str, tipo: str) -> list:
-    if etapa == "conta":       return contas_financeiras()
-    if etapa == "categoria":   return categorias_receita() if tipo == "RECEBER" else categorias_despesa()
+    if etapa == "conta":     return contas_financeiras()
+    if etapa == "categoria": return categorias_receita() if tipo == "RECEBER" else categorias_despesa()
     return centros_custo()
 
 
 def _label(etapa: str) -> str:
-    return {"conta": "Conta Financeira", "categoria": "Categoria", "centro_custo": "Centro de Custo"}.get(etapa, etapa)
+    return {
+        "conta":        "Conta Financeira",
+        "categoria":    "Categoria",
+        "centro_custo": "Centro de Custo",
+    }.get(etapa, etapa)
 
 
 def _msg(update_or_query):
