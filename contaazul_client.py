@@ -32,6 +32,16 @@ def _post(url: str, body: dict) -> dict:
                 data.setdefault("_location", loc)
             return data if isinstance(data, dict) else {"_raw": data}
 
+        if r.status_code == 429 and tentativa < RETRY_MAX:
+            espera = 35
+            try:
+                espera = int(r.headers.get("Retry-After", 35)) + 2
+            except Exception:
+                pass
+            print(f"[CA] Rate limit (429). Aguardando {espera}s (tentativa {tentativa}/{RETRY_MAX})...")
+            time.sleep(espera)
+            continue
+
         if r.status_code == 500 and tentativa < RETRY_MAX:
             print(f"[CA] Retry {tentativa} — status 500")
             time.sleep(2 ** tentativa)
@@ -119,7 +129,11 @@ def _verificar_duplicata(titulo: str, valor: float, vencimento: str, tipo: str) 
             return False
         itens = r.json().get("itens", [])
         for i in itens:
-            mesmo_valor  = abs(i.get("valor", 0) - valor) < 0.01
+            # A API retorna valor_total_liquido no /buscar, não "valor"
+            vc = i.get("valor_composicao") or {}
+            v_item = (vc.get("valor_bruto") or i.get("valor_total_liquido") or
+                      i.get("valor_bruto") or i.get("valor") or 0)
+            mesmo_valor  = abs(float(v_item) - valor) < 0.01
             mesmo_titulo = titulo.lower() in i.get("descricao", "").lower()
             if mesmo_valor and mesmo_titulo:
                 return True
@@ -166,10 +180,9 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
         },
     }
 
-    if contato_id:
-        body["contato"] = contato_id
-    else:
-        print("[CA] ⚠️ Sem contato — enviando sem 'contato'")
+    if not contato_id:
+        return {"ok": False, "erro": "Contato (cliente/fornecedor) não encontrado. Informe o contato ou cadastre um no Conta Azul."}
+    body["contato"] = contato_id
 
     endpoint  = "contas-a-receber" if tipo == "RECEBER" else "contas-a-pagar"
     resultado = _post(f"{BASE}/{endpoint}", body)
