@@ -62,15 +62,29 @@ def grafico_categorias(tipo: str = "PAGAR", mes: date | None = None) -> bytes:
     p = {"data_vencimento_de": str(mes), "data_vencimento_ate": str(fim)}
     itens = _buscar(endpoint, p)
 
+    # Monta lookup id_categoria → nome usando o catálogo
+    try:
+        from catalogo import categorias_despesa, categorias_receita
+        cats = categorias_despesa() if tipo == "PAGAR" else categorias_receita()
+        cat_map: dict[str, str] = {c["id"]: c.get("nome", "?") for c in cats if "id" in c}
+    except Exception:
+        cat_map = {}
+
     soma: dict[str, float] = defaultdict(float)
     for i in itens:
         rateio = i.get("rateio") or []
-        nome = "(sem categoria)"
         if rateio:
-            nome = (rateio[0].get("categoria") or {}).get("nome") or nome
-        soma[nome] += _valor(i)
+            # Distribui o valor entre todas as categorias do rateio
+            for r in rateio:
+                id_cat = r.get("id_categoria")
+                nome   = cat_map.get(id_cat, "(sem categoria)") if id_cat else "(sem categoria)"
+                # Usa o valor do rateio se disponível, senão divide igualmente
+                val    = r.get("valor") or (_valor(i) / len(rateio))
+                soma[nome] += float(val)
+        else:
+            soma["(sem categoria)"] += _valor(i)
 
-    if not soma:
+    if not soma or all(v == 0 for v in soma.values()):
         soma["(sem dados)"] = 0.01
 
     fig = go.Figure([go.Pie(labels=list(soma.keys()), values=list(soma.values()), hole=0.4)])
