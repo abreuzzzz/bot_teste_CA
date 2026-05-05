@@ -20,31 +20,69 @@ Campos obrigatórios:
   "mensagem": string,
   "categoria": string,
   "periodo": string,
-  "limite": float
+  "limite": float,
+  "cliente": string
 }
 
 Valores possíveis para "acao":
-- "RECEBER"   → lançar receita/recebimento
-- "PAGAR"     → lançar despesa/pagamento
-- "BAIXA"     → dar baixa em um lançamento existente (ex: "paguei o aluguel", "dei baixa na luz")
-- "PENDENTES" → contas a vencer
-- "ATRASADOS" → contas em atraso
-- "RELATORIO" → resumo financeiro
-- "CONSULTA"  → pergunta financeira que precisa análise
-- "GRAFICO"   → usuário quer visualizar gráfico (ex: "me mostra um gráfico", "gráfico de despesas", "fluxo de caixa visual")
-- "ORCAMENTO" → ver/definir orçamento (ex: "definir orçamento mercado 800", "como está meu orçamento?")
-- "BUSCA"     → busca livre por termo (ex: "quanto paguei pra X em 2026?", "busca fornecedor Y")
-- "EXPORT"    → exportar planilha (ex: "exportar mai/2026", "planilha do mês")
-- "INDEFINIDO"→ não foi possível identificar
+- "RECEBER"        → lançar receita/recebimento
+- "PAGAR"          → lançar despesa/pagamento
+- "BAIXA"          → dar baixa em lançamento (ex: "paguei o aluguel", "recebi do Pedro", "dei baixa na luz")
+- "BAIXA_POR_VALOR" → quando só cita valor (ex: "recebi 500 reais", "paguei 200")
+- "BAIXA_LOTE"     → baixar tudo que vence hoje (ex: "paguei tudo", "quitei tudo de hoje")
+- "CANCELAR_ULTIMO" → desfazer/cancelar o último lançamento feito (ex: "cancela o último", "desfaz o que lancei")
+- "EDITAR_PARCELA" → editar/alterar dados de parcela existente
+- "PENDENTES"      → contas a vencer
+- "ATRASADOS"      → contas em atraso
+- "RELATORIO"      → resumo financeiro
+- "SALDO"          → saldo das contas (ex: "qual meu saldo?", "to no vermelho?", "tenho dinheiro?")
+- "TRANSFERENCIAS" → transferências entre contas
+- "CONSULTA"       → pergunta financeira analítica (ex: "quanto gastei com X?", "qual meu maior cliente?", "tenho dinheiro pra Y?")
+- "GRAFICO"        → visualizar gráfico
+- "ORCAMENTO"      → ver/definir orçamento
+- "BUSCA"          → busca livre por termo
+- "EXPORT"         → exportar planilha
+- "FAVORITOS"      → ver/usar favoritos/templates (ex: "meus favoritos", "lançar favorito aluguel")
+- "FAVORITO_SALVAR" → salvar lançamento como favorito
+- "DRE"            → demonstrativo de resultado (ex: "dre", "resultado por categoria", "dre de abril", "quanto gastei por categoria")
+- "AGING"          → aging de recebíveis/pagáveis (ex: "aging", "inadimplência", "quanto estou devendo fora do prazo", "recebíveis em atraso")
+- "EXTRATO_CLIENTE" → histórico completo de parcelas de um cliente (ex: "extrato do João", "histórico do fornecedor X", "tudo do cliente Silva")
+- "COMPARAR"       → comparar dois meses (ex: "compare abril com março", "como foi abril vs março?", "diferença entre mai e abr")
+- "META"           → consultar ou definir meta de faturamento (ex: "meta do mês", "definir meta 20000", "quanto falta pra meta?")
+- "META_DEFINIR"   → definir nova meta (ex: "meta de receita 15000", "quero faturar 20 mil")
+- "HISTORICO"      → histórico de ações do bot (ex: "o que o bot fez?", "últimas ações", "histórico")
+- "CONFIG_ALERTAS" → configurar notificações (ex: "configurar alertas", "desligar briefing", "notificações")
+- "PROJECAO"       → projeção de caixa (ex: "como vai meu caixa?", "vai faltar dinheiro?", "projeção")
+- "CLIENTE"        → saldo aberto de um cliente/fornecedor (ex: "quanto o João me deve?", "saldo do fornecedor X")
+- "FECHAR_MES"     → checklist de fechamento (ex: "fechar mês", "checklist", "pronto pra fechar?")
+- "RECORRENTES"    → lançamentos recorrentes (ex: "o que se repete?", "recorrentes")
+- "INDEFINIDO"     → não identificado
 
 Regras:
-- RECEBER/PAGAR: extraia título, valor, vencimento e parcelas. Sem vencimento explícito, use hoje.
+- RECEBER/PAGAR: extraia título, valor, vencimento e parcelas. Sem vencimento explícito, use hoje. "em Nx"/"Nx vezes" → "parcelas": N.
 - BAIXA: preencha "termo_extra" com o que identifica a parcela (nome/descrição).
-- GRAFICO: em "termo_extra" coloque o tipo: "meses" (padrão), "categoria_despesa", "categoria_receita", "fluxo_caixa".
-- ORCAMENTO: se for definição, preencha "categoria" e "limite". Se for consulta, deixe ambos vazios.
-- BUSCA: "termo_extra" = palavra-chave a buscar. "periodo" pode conter ano (ex: "2026") ou ficar vazio.
-- EXPORT: "periodo" = ex "mai2026", "05/2026". Vazio = mês atual.
-- CONSULTA: coloque a pergunta original em "mensagem".
+- BAIXA_POR_VALOR: preencha "valor" com o valor mencionado. Sem descritor específico. Ex: "recebi 500" → acao=BAIXA_POR_VALOR, valor=500.0
+- BAIXA_LOTE: sem campos adicionais necessários.
+- CANCELAR_ULTIMO: sem campos adicionais.
+- SALDO: inclui perguntas do tipo "to no vermelho?", "tenho dinheiro pra pagar X?", "qual meu saldo?".
+- CONSULTA: use para perguntas analíticas com período ou categoria. Inclua a pergunta em "mensagem". Exemplos: "quanto gastei com fornecedores em abril?", "qual meu maior cliente esse mês?", "quando meu saldo vai zerar?", "tenho dinheiro pra pagar o 13°?"
+- DRE: "periodo" = mês se mencionado (ex: "abr", "abril/2026"). Sem mês = mês atual.
+- AGING: "termo_extra" = "RECEBER" (padrão) ou "PAGAR" se explícito.
+- EXTRATO_CLIENTE: "cliente" = nome do cliente/fornecedor. "periodo" = ano se mencionado.
+- COMPARAR: "periodo" = primeiro mês, "termo_extra" = segundo mês. Ex: "compare abril com março" → periodo="abril", termo_extra="março".
+- META: consulta → sem campos. META_DEFINIR: "valor" = valor da meta, "termo_extra" = "receita" | "resultado".
+- HISTORICO: sem campos adicionais.
+- CONFIG_ALERTAS: sem campos adicionais (o bot vai mostrar o menu).
+- PROJECAO: "limite" = dias de projeção (padrão 15, se usuário especificar outro).
+- CLIENTE: "cliente" = nome do cliente/fornecedor.
+- FECHAR_MES: sem campos adicionais.
+- RECORRENTES: sem campos adicionais.
+- GRAFICO: "termo_extra" = "meses" | "categoria_despesa" | "categoria_receita" | "fluxo_caixa".
+- ORCAMENTO: definição → preencha "categoria" e "limite"; consulta → ambos vazios.
+- BUSCA: "termo_extra" = palavra-chave; "cliente" = nome se mencionado; "periodo" = ano se presente.
+- EXPORT: "periodo" = ex "mai2026"; "termo_extra" = tipo/status.
+- FAVORITOS: "termo_extra" = nome do favorito se especificado.
+- FAVORITO_SALVAR: "titulo" = nome dado pelo usuário ao favorito.
 - "termo_extra" sempre = palavras-chave úteis.
 - Hoje é: {hoje}
 """
@@ -131,9 +169,14 @@ def extrair_de_audio(audio_bytes: bytes, mime: str = "audio/ogg") -> tuple[str, 
 
 
 def responder_consulta(pergunta: str, contexto_financeiro: str) -> str:
+    """Feature 10: Consulta financeira rica com contexto completo."""
     prompt = (
-        f"Você é um assistente financeiro. Responda de forma clara e objetiva em português.\n"
-        f"Dados financeiros disponíveis:\n{contexto_financeiro}\n\n"
+        f"Você é um assistente financeiro pessoal. Responda de forma clara, direta e amigável em português.\n"
+        f"Use números concretos da situação do usuário quando disponíveis.\n"
+        f"Se perguntarem 'to no vermelho?' ou similar, seja direto: sim/não + saldo atual.\n"
+        f"Se perguntarem sobre capacidade de pagamento, calcule e responda objetivamente.\n"
+        f"Não use markdown, seja conciso (máx 5 linhas).\n\n"
+        f"Dados financeiros do usuário:\n{contexto_financeiro}\n\n"
         f"Pergunta: {pergunta}"
     )
     try:
