@@ -1,9 +1,29 @@
 """Busca livre por descrição/contato em um período. Resume valor, qtd e lista."""
-import re
+import re, requests
 from datetime import date, timedelta
 from consulta_financeira import _buscar, _valor, _valor_pago
+from auth_contaazul import get_access_token
 
 ANO_RX = re.compile(r"\b(20\d{2})\b")
+
+
+def _resolver_cliente_ids(nome: str) -> list[str]:
+    """Tenta resolver nome de cliente para lista de IDs via GET /v1/pessoas."""
+    try:
+        r = requests.get(
+            "https://api-v2.contaazul.com/v1/pessoas",
+            headers={"Authorization": f"Bearer {get_access_token()}"},
+            params={"busca": nome, "pagina": 1, "tamanho_pagina": 10},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return []
+        data  = r.json()
+        itens = data.get("itens") or data.get("items") or []
+        return [i["id"] for i in itens if "id" in i]
+    except Exception as e:
+        print(f"[BUSCA] Erro ao resolver cliente '{nome}': {e}")
+        return []
 
 
 def parse_periodo_livre(texto: str) -> tuple[date, date]:
@@ -17,11 +37,18 @@ def parse_periodo_livre(texto: str) -> tuple[date, date]:
 
 
 def buscar(termo: str, ini: date | None = None, fim: date | None = None,
-           tipo: str = "AMBOS") -> dict:
+           tipo: str = "AMBOS", cliente: str | None = None) -> dict:
     """Retorna {qtd_pago, qtd_pendente, total_pago, total_pendente, itens}."""
     if not ini or not fim:
         ini, fim = parse_periodo_livre(termo)
     p = {"data_vencimento_de": str(ini), "data_vencimento_ate": str(fim)}
+
+    # Filtro por cliente: resolve nome → IDs e envia para a API
+    if cliente:
+        ids = _resolver_cliente_ids(cliente)
+        if ids:
+            p["ids_clientes"] = ids
+
     fontes = []
     if tipo in ("RECEBER", "AMBOS"):
         fontes.append(("RECEBER", "contas-a-receber/buscar"))
@@ -32,20 +59,23 @@ def buscar(termo: str, ini: date | None = None, fim: date | None = None,
     itens = []
     for t, ep in fontes:
         for i in _buscar(ep, p):
-            desc = (i.get("descricao") or "").lower()
+            desc    = (i.get("descricao") or "").lower()
             contato = ""
             c = i.get("contato")
             if isinstance(c, dict):
                 contato = (c.get("nome") or "").lower()
-            if any(w in desc or w in contato for w in termo_l.split() if len(w) > 2):
+            # Se já filtramos por IDs via API, inclui todos; caso contrário filtra por texto
+            if "ids_clientes" in p or any(w in desc or w in contato
+                                           for w in termo_l.split() if len(w) > 2):
                 itens.append({"tipo": t, **i})
 
-    qtd_pago = sum(1 for i in itens if i.get("status") in ("RECEBIDO", "PAGO", "RECEBIDO_PARCIAL", "PAGO_PARCIAL"))
+    _STATUS_PAGO = ("RECEBIDO", "QUITADO", "RECEBIDO_PARCIAL")
+    qtd_pago = sum(1 for i in itens if i.get("status") in _STATUS_PAGO)
     qtd_pend = len(itens) - qtd_pago
     total_pago = sum(_valor_pago(i) for i in itens
-                     if i.get("status") in ("RECEBIDO", "PAGO", "RECEBIDO_PARCIAL", "PAGO_PARCIAL"))
+                     if i.get("status") in _STATUS_PAGO)
     total_pend = sum(_valor(i) for i in itens
-                     if i.get("status") not in ("RECEBIDO", "PAGO", "RECEBIDO_PARCIAL", "PAGO_PARCIAL"))
+                     if i.get("status") not in _STATUS_PAGO)
 
     return {
         "periodo":        f"{ini.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}",
