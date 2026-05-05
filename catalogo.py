@@ -1,10 +1,12 @@
 import time, requests
 from auth_contaazul import get_access_token
+import storage as _storage
 
 BASE = "https://api-v2.contaazul.com/v1"
 
 _cache: dict = {}
 _TTL = 3600  # 1 hora
+_CACHE_FILE = "catalogo_cache.json"
 
 
 def _h() -> dict:
@@ -51,11 +53,32 @@ def _get(chave: str, fn) -> list:
         return entrada["data"]
     dados = fn()
     _cache[chave] = {"data": dados, "ts": time.time()}
+    _save_cache()
     return dados
+
+
+def _save_cache():
+    """Persiste o cache atual em disco."""
+    try:
+        _storage.salvar(_CACHE_FILE, _cache)
+    except Exception as e:
+        print(f"[CATALOGO] Aviso: não salvou cache em disco: {e}")
+
+
+def _load_cache():
+    """Carrega cache do disco ao iniciar (respeita TTL)."""
+    data = _storage.carregar(_CACHE_FILE)
+    if isinstance(data, dict):
+        _cache.update(data)
+        print(f"[CATALOGO] Cache carregado do disco ({len(data)} entradas).")
 
 
 def invalidar_cache():
     _cache.clear()
+    try:
+        import os; os.remove(_CACHE_FILE)
+    except Exception:
+        pass
     print("[CATALOGO] Cache invalidado.")
 
 
@@ -83,3 +106,12 @@ def categorias_despesa() -> list:
 def centros_custo() -> list:
     # GET /v1/centro-de-custo
     return _get("centros", lambda: _buscar_paginado("centro-de-custo", {"filtro_rapido": "ATIVO"}))
+
+
+def categorias_dre() -> list:
+    # GET /v1/financeiro/categorias-dre
+    return _get("dre", lambda: _buscar_paginado("financeiro/categorias-dre"))
+
+
+# Carrega cache do disco ao importar o módulo
+_load_cache()
