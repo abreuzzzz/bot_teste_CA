@@ -4,9 +4,9 @@ from telegram.ext import ContextTypes
 from catalogo import contas_financeiras, categorias_receita, categorias_despesa, centros_custo
 from sugestao import sugerir_conta, sugerir_categoria, sugerir_centro, match_livre, top3
 
-estados: dict = {}
 AGUARDANDO_LIVRE = "aguardando_livre"
 AGUARDANDO_EDIT  = "aguardando_edit"
+TIMEOUT_SESSAO   = 600  # 10 minutos de inatividade
 
 # Campos de texto editáveis (não usam o fluxo de seleção do catálogo)
 CAMPOS_TEXTO = {
@@ -39,16 +39,22 @@ def _opcao(context, etapa: str, idx: int) -> dict:
     return context.user_data.get("opcoes", {}).get(etapa, [])[idx]
 
 
-def limpar_estado(user_id: int):
+def limpar_estado(context: ContextTypes.DEFAULT_TYPE):
     """Chamada externa após confirmação/cancelamento do lançamento."""
-    estados.pop(user_id, None)
+    fluxo   = context.user_data.get("_fluxo", {})
+    user_id = fluxo.get("_user_id")
+    if user_id and context.job_queue:
+        for job in context.job_queue.get_jobs_by_name(f"timeout_fluxo_{user_id}"):
+            job.schedule_removal()
+    context.user_data.pop("_fluxo", None)
 
 
 # ─── Entrada pública ──────────────────────────────────────────────────────────
 
 async def iniciar_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE, dados: dict):
-    user_id = update.effective_user.id                             # ← user_id
-    estados[user_id] = {
+    user_id = update.effective_user.id
+    context.user_data["_fluxo"] = {
+        "_user_id": user_id,
         "etapa": "conta",
         "dados": {
             **dados,
@@ -57,22 +63,31 @@ async def iniciar_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE, da
             "centro_id":      None, "centro_nome":      None,
         },
     }
+    # Reagenda timeout de sessão
+    if context.job_queue:
+        for job in context.job_queue.get_jobs_by_name(f"timeout_fluxo_{user_id}"):
+            job.schedule_removal()
+        context.job_queue.run_once(
+            _cb_timeout_sessao,
+            TIMEOUT_SESSAO,
+            name=f"timeout_fluxo_{user_id}",
+            data={"user_id": user_id, "chat_id": update.effective_chat.id},
+        )
     await _perguntar(update.message, context, user_id)
 
 
 async def callback_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query   = update.callback_query
     await query.answer()
-    user_id = update.effective_user.id                             # ← user_id
-
-    if user_id not in estados:
+    user_id = update.effective_user.id
+    if "_fluxo" not in context.user_data:
         await query.edit_message_text("⚠️ Sessão expirada. Refaça o lançamento.")
         return
 
     partes  = query.data.split(":")
     etapa   = partes[1]
     idx_str = partes[2]
-    estado  = estados[user_id]
+    estado  = context.user_data["_fluxo"]
 
     if idx_str == "LIVRE":
         estado["etapa"]       = AGUARDANDO_LIVRE
@@ -102,8 +117,8 @@ async def callback_selecao(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── Texto livre (seleção por nome OU edição de campo) ──────────────────────
 
 async def receber_texto_livre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    user_id = update.effective_user.id                             # ← user_id
-    estado  = estados.get(user_id)
+    user_id = update.effective_user.id
+    estado  = context.user_data.get("_fluxo")
     if not estado:
         return False
 
@@ -166,14 +181,15 @@ async def callback_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     acao    = partes[1]
     user_id = int(partes[-1])
 
-    estado = estados.get(user_id)
+    estado = context.user_data.get("_fluxo")
     if not estado:
         # Restaurar estado a partir de dados salvos no bot_data
-        dados = context.bot_data.get(f"lancamento_{user_id}")        # ← user_id
+        dados = context.bot_data.get(f"lancamento_{user_id}")
         if not dados:
             await query.edit_message_text("⚠️ Sessão expirada. Refaça o lançamento.")
             return
-        estado = estados[user_id] = {"etapa": "edit", "dados": dict(dados)}
+        context.user_data["_fluxo"] = {"_user_id": user_id, "etapa": "edit", "dados": dict(dados)}
+        estado = context.user_data["_fluxo"]
 
     if acao == "menu":
         botoes = [
@@ -216,7 +232,7 @@ async def callback_editar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _aplicar_edit_texto(update: Update, context: ContextTypes.DEFAULT_TYPE, estado: dict):
     texto   = update.message.text.strip()
     campo   = estado.get("edit_campo")
-    user_id = update.effective_user.id                             # ← user_id
+    user_id = update.effective_user.id
 
     if campo == "titulo":
         estado["dados"]["titulo"] = texto
@@ -256,7 +272,7 @@ async def _aplicar_edit_texto(update: Update, context: ContextTypes.DEFAULT_TYPE
 # ─── Privados ─────────────────────────────────────────────────────────────────
 
 async def _perguntar(msg_or_query, context, user_id: int):
-    estado = estados[user_id]
+    estado = context.user_data["_fluxo"]
     etapa  = estado["etapa"]
     dados  = estado["dados"]
     tipo   = dados["tipo"]
@@ -297,7 +313,7 @@ async def _perguntar(msg_or_query, context, user_id: int):
 
 
 async def _avancar(update_or_query, context, user_id: int):
-    estado = estados[user_id]
+    estado = context.user_data["_fluxo"]
     etapa  = estado["etapa"]
 
     # Em modo edição, qualquer escolha vai direto para o resumo
@@ -321,7 +337,7 @@ async def _avancar(update_or_query, context, user_id: int):
 
 
 async def _confirmar(update_or_query, context, user_id: int, edit_existente: bool = False):
-    estado = estados[user_id]
+    estado = context.user_data["_fluxo"]
     dados  = estado["dados"]
 
     tipo_emoji = "📥" if dados["tipo"] == "RECEBER" else "📤"
@@ -343,8 +359,19 @@ async def _confirmar(update_or_query, context, user_id: int, edit_existente: boo
         [InlineKeyboardButton("❌ Cancelar",     callback_data=f"lancar:nao:{user_id}")],
     ])
 
-    context.bot_data[f"lancamento_{user_id}"] = dados                # ← user_id
+    context.bot_data[f"lancamento_{user_id}"] = dados
     estado["etapa"] = "aguardando_confirmacao"
+    # Renova timeout enquanto usuário ainda está interagindo
+    if context.job_queue:
+        for job in context.job_queue.get_jobs_by_name(f"timeout_fluxo_{user_id}"):
+            job.schedule_removal()
+        chat_id = getattr(update_or_query, "effective_chat", None)
+        chat_id = chat_id.id if chat_id else (getattr(update_or_query, "message", None) or update_or_query).chat.id
+        context.job_queue.run_once(
+            _cb_timeout_sessao, TIMEOUT_SESSAO,
+            name=f"timeout_fluxo_{user_id}",
+            data={"user_id": user_id, "chat_id": chat_id},
+        )
 
     if edit_existente and hasattr(update_or_query, "edit_message_text"):
         try:
@@ -396,3 +423,24 @@ def _msg(update_or_query):
     if hasattr(update_or_query, "message"):
         return update_or_query.message
     return update_or_query
+
+
+async def _cb_timeout_sessao(context: ContextTypes.DEFAULT_TYPE):
+    """Job agendado: encerra fluxo de lançamento após inatividade."""
+    data    = context.job.data
+    user_id = data["user_id"]
+    chat_id = data["chat_id"]
+    user_data = context.application.user_data.get(user_id, {})
+    if "_fluxo" in user_data:
+        del user_data["_fluxo"]
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "⏱️ *Sessão encerrada por inatividade.*\n"
+                    "Use /manual ou envie uma nova mensagem para recomecar."
+                ),
+                parse_mode="Markdown",
+            )
+        except Exception:
+            pass
