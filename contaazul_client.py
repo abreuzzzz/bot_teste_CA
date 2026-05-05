@@ -91,8 +91,8 @@ def _montar_parcelas(titulo: str, valor: float, parcelas: int, venc: str,
         body.append({
             "descricao":        _sanitizar(f"{titulo} ({n + 1}/{parcelas})"),
             "data_vencimento":  str(data_p),
-            "nota":             observacao,                    # ← required pela API
-            "conta_financeira": conta_id,                     # ← required pela API (por parcela)
+            "nota":             observacao,
+            "conta_financeira": conta_id,
             "detalhe_valor": {
                 "valor_bruto": valor_parcela,
             },
@@ -137,14 +137,12 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
     conta_id   = dados.get("conta_id")     or (contas_financeiras() or [{}])[0].get("id")
     cat_id     = dados.get("categoria_id") or _cat_padrao(tipo)
     centro_id  = dados.get("centro_id")
-    contato_id = dados.get("contato_id")   or _contato_padrao()   # ← obrigatório
+    contato_id = dados.get("contato_id")   or _contato_padrao()
 
     if not conta_id:
         return {"ok": False, "erro": "Conta financeira não encontrada no Conta Azul."}
     if not cat_id:
         return {"ok": False, "erro": "Categoria não encontrada no Conta Azul."}
-    if not contato_id:
-        return {"ok": False, "erro": "Contato (negociador) não encontrado. Cadastre um contato no Conta Azul."}
 
     if not forcar and _verificar_duplicata(titulo, valor, venc, tipo):
         return {
@@ -160,13 +158,17 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
         "valor":              valor,
         "descricao":          titulo,
         "observacao":         observacao,
-        "contato":            contato_id,                      # ← required pela API
         "conta_financeira":   conta_id,
         "rateio":             _rateio(cat_id, valor, centro_id),
         "condicao_pagamento": {
             "parcelas": _montar_parcelas(titulo, valor, parcelas, venc, conta_id, observacao),
         },
     }
+
+    if contato_id:                                             # ← inclui só se existir
+        body["contato"] = contato_id
+    else:
+        print("[CA] ⚠️ Sem contato — enviando sem 'contato'")
 
     endpoint  = "contas-a-receber" if tipo == "RECEBER" else "contas-a-pagar"
     resultado = _post(f"{BASE}/{endpoint}", body)
@@ -184,18 +186,43 @@ def _cat_padrao(tipo: str) -> str | None:
 
 
 def _contato_padrao() -> str | None:
-    """Busca o primeiro contato ativo na API do Conta Azul."""
+    """Busca o primeiro contato ativo via GET /v1/pessoas."""
     try:
+        # Tenta primeiro filtrado por perfil Cliente
         r = requests.get(
+            "https://api-v2.contaazul.com/v1/pessoas",
+            headers=_h(),
+            params={
+                "pagina":         1,
+                "tamanho_pagina": 1,
+                "tipo_perfil":    "Cliente",
+            },
+            timeout=10,
+        )
+        print(f"[CA] Pessoas (Cliente) → HTTP {r.status_code}")
+        if r.status_code == 200:
+            itens = r.json().get("items", [])              # ← "items", não "itens"
+            if itens:
+                cid = itens[0].get("id")
+                print(f"[CA] Contato padrão: {cid} ({itens[0].get('nome', '?')})")
+                return cid
+
+        # Fallback: sem filtro de perfil
+        r2 = requests.get(
             "https://api-v2.contaazul.com/v1/pessoas",
             headers=_h(),
             params={"pagina": 1, "tamanho_pagina": 1},
             timeout=10,
         )
-        if r.status_code == 200:
-            itens = r.json().get("itens", [])
+        print(f"[CA] Pessoas (sem filtro) → HTTP {r2.status_code}")
+        if r2.status_code == 200:
+            itens = r2.json().get("items", [])             # ← "items", não "itens"
             if itens:
-                return itens[0].get("id")
+                cid = itens[0].get("id")
+                print(f"[CA] Contato padrão (fallback): {cid} ({itens[0].get('nome', '?')})")
+                return cid
+
+        print(f"[CA] Nenhuma pessoa encontrada. Response: {r.text[:300]}")
     except Exception as e:
         print(f"[CA] Erro ao buscar contato padrão: {e}")
     return None
