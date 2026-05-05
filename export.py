@@ -8,10 +8,23 @@ MESES = {
     "jul": 7, "ago": 8, "set": 9, "out": 10, "nov": 11, "dez": 12,
 }
 
+TIPO_MAP = {
+    "receber": "RECEBER", "receita": "RECEBER",
+    "pagar":   "PAGAR",   "despesa": "PAGAR",   "pago": "PAGAR",
+}
+STATUS_MAP = {
+    "atrasado": "ATRASADO", "recebido": "RECEBIDO",
+    "pago":     "RECEBIDO", "aberto":   "EM_ABERTO",
+    "pendente": "EM_ABERTO",
+}
+
 
 def parse_periodo(texto: str) -> tuple[date, date]:
     """Aceita 'mai2026', '05/2026', '2026-05', 'mai/26'. Default: mês atual."""
-    t = (texto or "").lower().strip().replace("/", "").replace("-", "").replace(" ", "")
+    # Remove palavras de tipo/status para não atrapalhar parsing de data
+    palavras_filtro = set(TIPO_MAP) | set(STATUS_MAP)
+    t = " ".join(w for w in (texto or "").lower().split() if w not in palavras_filtro)
+    t = t.strip().replace("/", "").replace("-", "").replace(" ", "")
     hoje = date.today()
     m = re.match(r"^([a-z]{3})(\d{2,4})$", t)
     if m:
@@ -44,31 +57,58 @@ def parse_periodo(texto: str) -> tuple[date, date]:
     return ini, fim
 
 
-def _coletar(ini: date, fim: date) -> list[dict]:
-    p = {"data_vencimento_de": str(ini), "data_vencimento_ate": str(fim)}
+def parse_export_args(texto: str) -> dict:
+    """
+    Extrai período, tipo (RECEBER/PAGAR/AMBOS) e status da string de export.
+    Ex: "mai2026 pagar atrasado" -> {ini, fim, tipo="PAGAR", status=["ATRASADO"]}
+    """
+    palavras = (texto or "").lower().split()
+    tipo     = "AMBOS"
+    status: list[str] = []
+    for p in palavras:
+        if p in TIPO_MAP:
+            tipo = TIPO_MAP[p]
+        elif p in STATUS_MAP and STATUS_MAP[p] not in status:
+            status.append(STATUS_MAP[p])
+    ini, fim = parse_periodo(texto)
+    return {"ini": ini, "fim": fim, "tipo": tipo, "status": status or None}
+
+
+def _coletar(ini: date, fim: date,
+             tipo: str = "AMBOS", status: list[str] | None = None) -> list[dict]:
+    p: dict = {"data_vencimento_de": str(ini), "data_vencimento_ate": str(fim)}
+    if status:
+        p["status"] = status
     linhas = []
-    for tipo, ep in (("RECEBER", "contas-a-receber/buscar"), ("PAGAR", "contas-a-pagar/buscar")):
+    fontes = []
+    if tipo in ("RECEBER", "AMBOS"):
+        fontes.append(("RECEBER", "contas-a-receber/buscar"))
+    if tipo in ("PAGAR", "AMBOS"):
+        fontes.append(("PAGAR", "contas-a-pagar/buscar"))
+    for tipo_ep, ep in fontes:
         for i in _buscar(ep, p):
-            rateio = i.get("rateio") or []
+            rateio   = i.get("rateio") or []
             categoria = (rateio[0].get("categoria") or {}).get("nome", "") if rateio else ""
             linhas.append({
-                "tipo":          tipo,
-                "descricao":     i.get("descricao", ""),
-                "valor":         round(_valor(i), 2),
-                "valor_pago":    round(_valor_pago(i), 2),
+                "tipo":            tipo_ep,
+                "descricao":       i.get("descricao", ""),
+                "valor":           round(_valor(i), 2),
+                "valor_pago":      round(_valor_pago(i), 2),
                 "data_vencimento": i.get("data_vencimento", ""),
                 "data_pagamento":  i.get("data_pagamento", "") or "",
-                "status":        i.get("status", ""),
-                "categoria":     categoria,
-                "contato":       (i.get("contato") or {}).get("nome", "") if isinstance(i.get("contato"), dict) else "",
+                "status":          i.get("status", ""),
+                "categoria":       categoria,
+                "contato":         (i.get("contato") or {}).get("nome", "") if isinstance(i.get("contato"), dict) else "",
             })
     linhas.sort(key=lambda x: x["data_vencimento"])
     return linhas
 
 
-def exportar_xlsx(ini: date, fim: date) -> tuple[bytes, str]:
-    linhas = _coletar(ini, fim)
-    nome = f"lancamentos_{ini.strftime('%Y%m')}.xlsx"
+def exportar_xlsx(ini: date, fim: date,
+                  tipo: str = "AMBOS", status: list[str] | None = None) -> tuple[bytes, str]:
+    linhas = _coletar(ini, fim, tipo=tipo, status=status)
+    sufixo = f"_{tipo.lower()}" if tipo != "AMBOS" else ""
+    nome = f"lancamentos_{ini.strftime('%Y%m')}{sufixo}.xlsx"
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill
@@ -93,12 +133,14 @@ def exportar_xlsx(ini: date, fim: date) -> tuple[bytes, str]:
         wb.save(buf)
         return buf.getvalue(), nome
     except ImportError:
-        return exportar_csv(ini, fim)
+        return exportar_csv(ini, fim, tipo=tipo, status=status)
 
 
-def exportar_csv(ini: date, fim: date) -> tuple[bytes, str]:
-    linhas = _coletar(ini, fim)
-    nome = f"lancamentos_{ini.strftime('%Y%m')}.csv"
+def exportar_csv(ini: date, fim: date,
+                 tipo: str = "AMBOS", status: list[str] | None = None) -> tuple[bytes, str]:
+    linhas = _coletar(ini, fim, tipo=tipo, status=status)
+    sufixo = f"_{tipo.lower()}" if tipo != "AMBOS" else ""
+    nome = f"lancamentos_{ini.strftime('%Y%m')}{sufixo}.csv"
     buf = io.StringIO()
     if linhas:
         w = csv.DictWriter(buf, fieldnames=list(linhas[0].keys()), delimiter=";")
