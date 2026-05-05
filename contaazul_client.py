@@ -94,7 +94,8 @@ def _montar_parcelas(titulo: str, valor: float, parcelas: int, venc: str,
             "nota":             observacao,
             "conta_financeira": conta_id,
             "detalhe_valor": {
-                "valor_bruto": valor_parcela,
+                "valor_bruto":   valor_parcela,
+                "valor_liquido": valor_parcela,  # ← corrigido: obrigatório pela API
             },
         })
     return body
@@ -165,7 +166,7 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
         },
     }
 
-    if contato_id:                                             # ← inclui só se existir
+    if contato_id:
         body["contato"] = contato_id
     else:
         print("[CA] ⚠️ Sem contato — enviando sem 'contato'")
@@ -188,7 +189,6 @@ def _cat_padrao(tipo: str) -> str | None:
 def _contato_padrao() -> str | None:
     """Busca o primeiro contato ativo via GET /v1/pessoas."""
     try:
-        # Tenta primeiro filtrado por perfil Cliente
         r = requests.get(
             "https://api-v2.contaazul.com/v1/pessoas",
             headers=_h(),
@@ -201,13 +201,12 @@ def _contato_padrao() -> str | None:
         )
         print(f"[CA] Pessoas (Cliente) → HTTP {r.status_code}")
         if r.status_code == 200:
-            itens = r.json().get("items", [])              # ← "items", não "itens"
+            itens = r.json().get("items", [])
             if itens:
                 cid = itens[0].get("id")
                 print(f"[CA] Contato padrão: {cid} ({itens[0].get('nome', '?')})")
                 return cid
 
-        # Fallback: sem filtro de perfil
         r2 = requests.get(
             "https://api-v2.contaazul.com/v1/pessoas",
             headers=_h(),
@@ -216,7 +215,7 @@ def _contato_padrao() -> str | None:
         )
         print(f"[CA] Pessoas (sem filtro) → HTTP {r2.status_code}")
         if r2.status_code == 200:
-            itens = r2.json().get("items", [])             # ← "items", não "itens"
+            itens = r2.json().get("items", [])
             if itens:
                 cid = itens[0].get("id")
                 print(f"[CA] Contato padrão (fallback): {cid} ({itens[0].get('nome', '?')})")
