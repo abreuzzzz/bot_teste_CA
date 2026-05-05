@@ -180,9 +180,10 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
         },
     }
 
-    if not contato_id:
-        return {"ok": False, "erro": "Contato (cliente/fornecedor) não encontrado. Informe o contato ou cadastre um no Conta Azul."}
-    body["contato"] = contato_id
+    if contato_id:
+        body["contato"] = contato_id
+    else:
+        print("[CA] ⚠️ Nenhum contato encontrado — enviando sem 'contato'. A API pode rejeitar.")
 
     endpoint  = "contas-a-receber" if tipo == "RECEBER" else "contas-a-pagar"
     resultado = _post(f"{BASE}/{endpoint}", body)
@@ -214,7 +215,7 @@ def _contato_padrao() -> str | None:
         )
         print(f"[CA] Pessoas (Cliente) → HTTP {r.status_code}")
         if r.status_code == 200:
-            itens = r.json().get("items", [])
+            itens = r.json().get("itens") or r.json().get("items", [])
             if itens:
                 cid = itens[0].get("id")
                 print(f"[CA] Contato padrão: {cid} ({itens[0].get('nome', '?')})")
@@ -228,7 +229,7 @@ def _contato_padrao() -> str | None:
         )
         print(f"[CA] Pessoas (sem filtro) → HTTP {r2.status_code}")
         if r2.status_code == 200:
-            itens = r2.json().get("items", [])
+            itens = r2.json().get("itens") or r2.json().get("items", [])
             if itens:
                 cid = itens[0].get("id")
                 print(f"[CA] Contato padrão (fallback): {cid} ({itens[0].get('nome', '?')})")
