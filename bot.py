@@ -44,10 +44,16 @@ def _user_key(update: Update) -> int:
 async def handle_erro(update: object, context: ContextTypes.DEFAULT_TYPE):
     tb = "".join(traceback.format_exception(None, context.error, context.error.__traceback__))
     logging.error(f"[ERRO] Update causou exceção:\n{tb}")
+
+    # Extrai o body da resposta HTTP da exceção (ex: requests.HTTPError)
+    resp_text = ""
+    err = context.error
+    if hasattr(err, "response") and err.response is not None:
+        resp_text = f"\n\n*API response:*\n`{err.response.text[:600]}`"
+
     if isinstance(update, Update) and update.effective_message:
-        erro_curto = str(context.error)[:200]
         await update.effective_message.reply_text(
-            f"❌ *Erro interno:*\n`{erro_curto}`\n\n_Tente novamente ou contate o administrador._",
+            f"❌ *Erro:* `{str(err)[:150]}`{resp_text}",
             parse_mode="Markdown",
         )
 
@@ -615,7 +621,7 @@ def main():
     app.add_handler(MessageHandler(filters.Document.ALL,                  handle_documento))
     app.add_handler(MessageHandler(filters.PHOTO,                         handle_foto))
 
-    app.add_error_handler(handle_erro)                             # ← novo
+    app.add_error_handler(handle_erro)
 
     iniciar(app, TELEGRAM_ALLOWED_CHAT_ID)
     _agendar_shutdown(app)
