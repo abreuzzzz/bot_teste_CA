@@ -1,4 +1,4 @@
-import asyncio, logging, os, signal, threading, json, io
+import asyncio, logging, os, signal, threading, json, io, traceback
 from datetime import date
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import (
@@ -32,12 +32,24 @@ def _ok(update: Update) -> bool:
     return (
         update.effective_user is not None
         and update.effective_chat is not None
-        and update.effective_chat.id in TELEGRAM_ALLOWED_CHAT_IDS  # ← whitelist de grupos/chats
+        and update.effective_chat.id in TELEGRAM_ALLOWED_CHAT_IDS
     )
 
 def _user_key(update: Update) -> int:
     """Chave única por usuário para evitar colisão em grupos."""
     return update.effective_user.id
+
+# ─── Error Handler ────────────────────────────────────────────────────────────
+
+async def handle_erro(update: object, context: ContextTypes.DEFAULT_TYPE):
+    tb = "".join(traceback.format_exception(None, context.error, context.error.__traceback__))
+    logging.error(f"[ERRO] Update causou exceção:\n{tb}")
+    if isinstance(update, Update) and update.effective_message:
+        erro_curto = str(context.error)[:200]
+        await update.effective_message.reply_text(
+            f"❌ *Erro interno:*\n`{erro_curto}`\n\n_Tente novamente ou contate o administrador._",
+            parse_mode="Markdown",
+        )
 
 # ─── Comandos ─────────────────────────────────────────────────────────────────
 
@@ -288,10 +300,10 @@ async def callback_lancar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    partes   = query.data.split(":")
-    acao     = partes[1]
-    user_id  = int(partes[2])                                      # ← user_id (não chat_id)
-    dados    = context.bot_data.pop(f"lancamento_{user_id}", None)
+    partes  = query.data.split(":")
+    acao    = partes[1]
+    user_id = int(partes[2])
+    dados   = context.bot_data.pop(f"lancamento_{user_id}", None)
 
     if acao == "nao" or not dados:
         limpar_estado(user_id)
@@ -329,7 +341,7 @@ async def callback_forcar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    user_id = int(query.data.split(":")[1])                        # ← user_id (não chat_id)
+    user_id = int(query.data.split(":")[1])
     dados   = context.bot_data.pop(f"lancamento_{user_id}", None)
     if not dados:
         await query.edit_message_text("⚠️ Sessão expirada.")
@@ -603,7 +615,9 @@ def main():
     app.add_handler(MessageHandler(filters.Document.ALL,                  handle_documento))
     app.add_handler(MessageHandler(filters.PHOTO,                         handle_foto))
 
-    iniciar(app, TELEGRAM_ALLOWED_CHAT_ID)   # scheduler continua usando o primeiro ID
+    app.add_error_handler(handle_erro)                             # ← novo
+
+    iniciar(app, TELEGRAM_ALLOWED_CHAT_ID)
     _agendar_shutdown(app)
 
     print("🤖 Bot iniciado!")
