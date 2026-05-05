@@ -19,7 +19,7 @@ def _post(url: str, body: dict) -> dict:
     for tentativa in range(1, RETRY_MAX + 1):
         r = requests.post(url, headers=_h(), json=body, timeout=20)
         print(f"[CA] POST {url} → HTTP {r.status_code}")
-        print(f"[CA] Payload enviado: {str(body)[:1000]}")         # ← log do payload
+        print(f"[CA] Payload enviado: {str(body)[:1000]}")
 
         if r.status_code in (200, 201, 202):
             try:
@@ -37,18 +37,16 @@ def _post(url: str, body: dict) -> dict:
             time.sleep(2 ** tentativa)
             continue
 
-        print(f"[CA] Erro {r.status_code}: {r.text[:2000]}")       # ← era 300, agora 2000
+        print(f"[CA] Erro {r.status_code}: {r.text[:2000]}")
         r.raise_for_status()
 
     raise Exception("Máximo de tentativas atingido")
 
 
 def _extrair_id(resp: dict) -> str | None:
-    """A API v2 pode retornar o ID em diferentes campos. Tenta vários."""
     if not isinstance(resp, dict):
         return None
-    for k in ("id", "protocolId", "protocol_id", "protocolo",
-              "uuid", "identifier", "_id"):
+    for k in ("id", "protocolId", "protocol_id", "protocolo", "uuid", "identifier", "_id"):
         v = resp.get(k)
         if v:
             return str(v)
@@ -69,7 +67,6 @@ def _sanitizar(texto: str) -> str:
 
 
 def _rateio(categoria_id: str, valor: float, centro_id: str | None) -> list:
-    """Monta o rateio conforme documentação da API v2."""
     item = {"id_categoria": categoria_id, "valor": valor}
     if centro_id:
         item["rateio_centro_custo"] = [{"id_centro_custo": centro_id, "valor": valor}]
@@ -77,7 +74,6 @@ def _rateio(categoria_id: str, valor: float, centro_id: str | None) -> list:
 
 
 def _add_meses(d: date, n: int) -> date:
-    """Soma n meses preservando o dia, com clamp no último dia válido do mês."""
     total = d.month - 1 + n
     ano   = d.year + total // 12
     mes   = total % 12 + 1
@@ -86,21 +82,19 @@ def _add_meses(d: date, n: int) -> date:
 
 
 def _montar_parcelas(titulo: str, valor: float, parcelas: int, venc: str,
-                     observacao: str = "Lançamento automático via bot") -> list:
-    """
-    Monta o array `parcelas` com vencimentos mensais.
-    REMOVIDO: conta_financeira (fica só no body raiz) e nota (campo inválido).
-    """
+                     conta_id: str, observacao: str = "Lançamento automático via bot") -> list:
     valor_parcela = round(valor / parcelas, 2)
     venc_dt       = date.fromisoformat(venc)
     body = []
     for n in range(parcelas):
         data_p = _add_meses(venc_dt, n)
         body.append({
-            "descricao":       _sanitizar(f"{titulo} ({n + 1}/{parcelas})"),
-            "data_vencimento": str(data_p),
+            "descricao":        _sanitizar(f"{titulo} ({n + 1}/{parcelas})"),
+            "data_vencimento":  str(data_p),
+            "nota":             observacao,                    # ← required pela API
+            "conta_financeira": conta_id,                     # ← required pela API (por parcela)
             "detalhe_valor": {
-                "valor_bruto": valor_parcela,          # ← apenas valor_bruto
+                "valor_bruto": valor_parcela,
             },
         })
     return body
@@ -134,25 +128,23 @@ def _verificar_duplicata(titulo: str, valor: float, vencimento: str, tipo: str) 
 
 
 def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
-    """
-    dados = resultado do fluxo_lancamento após confirmação.
-    forcar=True pula verificação de duplicata.
-    Retorna {"ok": True, "id": protocolId} ou {"ok": False, "erro": str}
-    """
-    tipo     = dados["tipo"]
-    titulo   = _sanitizar(dados["titulo"])
-    valor    = float(dados["valor"])
-    parcelas = int(dados.get("parcelas", 1))
-    venc     = dados["vencimento"]
+    tipo      = dados["tipo"]
+    titulo    = _sanitizar(dados["titulo"])
+    valor     = float(dados["valor"])
+    parcelas  = int(dados.get("parcelas", 1))
+    venc      = dados["vencimento"]
 
-    conta_id  = dados.get("conta_id")     or (contas_financeiras() or [{}])[0].get("id")
-    cat_id    = dados.get("categoria_id") or _cat_padrao(tipo)
-    centro_id = dados.get("centro_id")
+    conta_id   = dados.get("conta_id")     or (contas_financeiras() or [{}])[0].get("id")
+    cat_id     = dados.get("categoria_id") or _cat_padrao(tipo)
+    centro_id  = dados.get("centro_id")
+    contato_id = dados.get("contato_id")   or _contato_padrao()   # ← obrigatório
 
     if not conta_id:
         return {"ok": False, "erro": "Conta financeira não encontrada no Conta Azul."}
     if not cat_id:
         return {"ok": False, "erro": "Categoria não encontrada no Conta Azul."}
+    if not contato_id:
+        return {"ok": False, "erro": "Contato (negociador) não encontrado. Cadastre um contato no Conta Azul."}
 
     if not forcar and _verificar_duplicata(titulo, valor, venc, tipo):
         return {
@@ -168,16 +160,13 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
         "valor":              valor,
         "descricao":          titulo,
         "observacao":         observacao,
-        "conta_financeira":   conta_id,                            # ← só aqui, removido das parcelas
+        "contato":            contato_id,                      # ← required pela API
+        "conta_financeira":   conta_id,
         "rateio":             _rateio(cat_id, valor, centro_id),
         "condicao_pagamento": {
-            "parcelas": _montar_parcelas(titulo, valor, parcelas, venc, observacao),
+            "parcelas": _montar_parcelas(titulo, valor, parcelas, venc, conta_id, observacao),
         },
     }
-
-    contato_id = dados.get("contato_id")
-    if contato_id:
-        body["contato"] = contato_id
 
     endpoint  = "contas-a-receber" if tipo == "RECEBER" else "contas-a-pagar"
     resultado = _post(f"{BASE}/{endpoint}", body)
@@ -192,3 +181,21 @@ def criar_lancamento(dados: dict, forcar: bool = False) -> dict:
 def _cat_padrao(tipo: str) -> str | None:
     lista = categorias_receita() if tipo == "RECEBER" else categorias_despesa()
     return lista[0]["id"] if lista else None
+
+
+def _contato_padrao() -> str | None:
+    """Busca o primeiro contato ativo na API do Conta Azul."""
+    try:
+        r = requests.get(
+            "https://api-v2.contaazul.com/v1/pessoas",
+            headers=_h(),
+            params={"pagina": 1, "tamanho_pagina": 1},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            itens = r.json().get("itens", [])
+            if itens:
+                return itens[0].get("id")
+    except Exception as e:
+        print(f"[CA] Erro ao buscar contato padrão: {e}")
+    return None
