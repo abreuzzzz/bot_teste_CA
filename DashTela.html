@@ -822,12 +822,27 @@
           avulso: "AVULSO",
           installment: "PARCELADO"
         };
+        const statusLabelByKey = {
+          RECEIVED: "Recebida",
+          RECEIVED_IN_CASH: "Recebida",
+          DUNNING_RECEIVED: "Recebida",
+          CONFIRMED: "Confirmada",
+          OVERDUE: "Inadiplente",
+          DUNNING_REQUESTED: "Inadiplente"
+        };
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
         const enrichedPayments = payments.map((payment) => {
           const paymentCustomerKey = String(payment.customer || payment.customerId || "");
           const customer = customerById.get(paymentCustomerKey) || {};
           const customerInfo = customerMap.get(paymentCustomerKey) || {};
           const categoryKey = getPaymentCategory(payment);
+          const statusKey = String(payment.status || "").toUpperCase();
+          const dueDateObj = parseDateOnly(payment.dueDate);
+          const isFuturePending =
+            OPEN_STATUSES.has(statusKey) && dueDateObj instanceof Date && dueDateObj > todayStart;
+          const situacao = isFuturePending ? "Futuro pendente" : statusLabelByKey[statusKey] || "Inadiplente";
 
           return {
             id: customer.id || "",
@@ -844,7 +859,15 @@
             postalCode: customer.postalCode || "",
             cpfCnpj: customer.cpfCnpj || "",
             personType: customer.personType || "",
-            modalidade: categoryLabelByKey[categoryKey] || "AVULSO"
+            confirmedDate: payment.confirmedDate || "",
+            dueDate: payment.dueDate || "",
+            paymentDate: payment.paymentDate || "",
+            clientPaymentDate: payment.clientPaymentDate || "",
+            creditDate: payment.creditDate || "",
+            estimatedCreditDate: payment.estimatedCreditDate || "",
+            billingType: payment.billingType || "",
+            modalidade: categoryLabelByKey[categoryKey] || "AVULSO",
+            situacao: situacao
           };
         });
 
