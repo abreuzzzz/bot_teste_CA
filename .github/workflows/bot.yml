@@ -3,7 +3,7 @@ name: 🤖 Bot Telegram - Run
 on:
   workflow_dispatch:        # start manual
   schedule:
-    - cron: "0 */4 * * *"  # reinicia a cada 4h automaticamente
+    - cron: "0 *##/4 * * *"  # reinicia a cada 4h automaticamente
 
 jobs:
   run-bot:
