@@ -238,6 +238,17 @@
         min-width: 240px;
       }
 
+      .cost-table .cost-type-col {
+        text-align: left;
+        min-width: 110px;
+        font-weight: 600;
+      }
+
+      .cost-table .cost-center-name {
+        background: #e8f2f5;
+        font-weight: 700;
+      }
+
       .cost-table thead .cost-sticky {
         background: #f1f6f7;
         z-index: 4;
@@ -250,11 +261,15 @@
         text-align: left;
       }
 
-      .cost-center-row td {
-        background: #ffffff;
+      .cost-entry-row td {
+        background: #fbfefd;
       }
 
-      .cost-subtotal-row td {
+      .cost-exit-row td {
+        background: #fffaf8;
+      }
+
+      .cost-total-row td {
         background: #f1f7f9;
         font-weight: 700;
         border-top: 2px solid #d5e6eb;
@@ -1029,17 +1044,14 @@
           return selectedYear + "-" + String(index + 1).padStart(2, "0");
         });
 
-        let headerHtml = '<tr><th class="cost-sticky">Centro de Custo</th>';
+        let headerHtml = '<tr><th class="cost-sticky">Centro de Custo</th><th>Tipo</th>';
         monthKeys.forEach((monthKey) => {
           headerHtml += '<th>' + escapeHtml(formatMonthKeyLabel(monthKey)) + "</th>";
         });
-        headerHtml += "<th>Total</th></tr>";
+        headerHtml += "<th>Total</th><th>Media</th></tr>";
         centroCustoTableHeadEl.innerHTML = headerHtml;
 
-        const groups = {
-          Entradas: {},
-          Saidas: {}
-        };
+        const centers = {};
 
         (rows || []).forEach((row) => {
           if (!row || !row.monthKey || !row.group || !row.costCenter) {
@@ -1050,77 +1062,96 @@
             return;
           }
 
-          if (!groups[row.group]) {
+          const normalizedGroup = row.group === "Entradas" ? "entradas" : row.group === "Saidas" ? "saidas" : "";
+          if (!normalizedGroup) {
             return;
           }
 
-          if (!groups[row.group][row.costCenter]) {
-            groups[row.group][row.costCenter] = {};
+          if (!centers[row.costCenter]) {
+            centers[row.costCenter] = {
+              entradas: {},
+              saidas: {}
+            };
           }
 
-          groups[row.group][row.costCenter][row.monthKey] =
-            toNumber(groups[row.group][row.costCenter][row.monthKey]) + toNumber(row.total);
+          centers[row.costCenter][normalizedGroup][row.monthKey] =
+            toNumber(centers[row.costCenter][normalizedGroup][row.monthKey]) + toNumber(row.total);
         });
 
-        const totalColumns = monthKeys.length + 2;
+        const totalColumns = monthKeys.length + 4;
         let bodyHtml = "";
-        let hasAnyData = false;
+        const sortedCenters = Object.keys(centers).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
-        ["Entradas", "Saidas"].forEach((groupName) => {
-          const centers = Object.keys(groups[groupName]).sort((a, b) => a.localeCompare(b, "pt-BR"));
-          bodyHtml +=
-            '<tr class="cost-group-row"><td class="cost-sticky" colspan="' +
+        if (!sortedCenters.length) {
+          bodyHtml =
+            '<tr><td class="cost-sticky" colspan="' +
             totalColumns +
-            '">' +
-            escapeHtml(groupName) +
-            "</td></tr>";
+            '">Sem dados de centros de custo para o ano selecionado.</td></tr>';
+          setCentroCustoStatus("Sem dados de centros de custo para o ano " + selectedYear + ".", false);
+          centroCustoTableBodyEl.innerHTML = bodyHtml;
+          return;
+        }
 
-          if (!centers.length) {
+        sortedCenters.forEach((centerName) => {
+          const centerValues = centers[centerName];
+          const entradasByMonth = monthKeys.map((monthKey) => toNumber(centerValues.entradas[monthKey]));
+          const saidasByMonth = monthKeys.map((monthKey) => toNumber(centerValues.saidas[monthKey]));
+          const totalByMonth = monthKeys.map((_, index) => entradasByMonth[index] - saidasByMonth[index]);
+
+          const entradasTotal = entradasByMonth.reduce((acc, value) => acc + value, 0);
+          const saidasTotal = saidasByMonth.reduce((acc, value) => acc + value, 0);
+          const totalGeral = totalByMonth.reduce((acc, value) => acc + value, 0);
+
+          const entradasMedia = entradasTotal / monthKeys.length;
+          const saidasMedia = saidasTotal / monthKeys.length;
+          const totalMedia = totalGeral / monthKeys.length;
+
+          bodyHtml += '<tr class="cost-entry-row">';
+          bodyHtml += '<td class="cost-sticky cost-center-name" rowspan="3">' + escapeHtml(centerName) + "</td>";
+          bodyHtml += '<td class="cost-type-col">Entrada</td>';
+          entradasByMonth.forEach((value) => {
+            bodyHtml += "<td>" + escapeHtml(value ? currency(value) : "-") + "</td>";
+          });
+          bodyHtml += "<td><strong>" + escapeHtml(currency(entradasTotal)) + "</strong></td>";
+          bodyHtml += "<td><strong>" + escapeHtml(currency(entradasMedia)) + "</strong></td>";
+          bodyHtml += "</tr>";
+
+          bodyHtml += '<tr class="cost-exit-row">';
+          bodyHtml += '<td class="cost-type-col">Saida</td>';
+          saidasByMonth.forEach((value) => {
+            bodyHtml += "<td>" + escapeHtml(value ? currency(value) : "-") + "</td>";
+          });
+          bodyHtml += "<td><strong>" + escapeHtml(currency(saidasTotal)) + "</strong></td>";
+          bodyHtml += "<td><strong>" + escapeHtml(currency(saidasMedia)) + "</strong></td>";
+          bodyHtml += "</tr>";
+
+          bodyHtml += '<tr class="cost-total-row">';
+          bodyHtml += '<td class="cost-type-col">Total</td>';
+          totalByMonth.forEach((value) => {
+            const textColor = value >= 0 ? "#1f6f4d" : "#a11d2f";
             bodyHtml +=
-              '<tr><td class="cost-sticky" colspan="' +
-              totalColumns +
-              '">Sem dados para este grupo no ano selecionado.</td></tr>';
-            return;
-          }
-
-          hasAnyData = true;
-
-          const groupTotals = {};
-          monthKeys.forEach((monthKey) => {
-            groupTotals[monthKey] = 0;
+              '<td style="color:' +
+              textColor +
+              '">' +
+              escapeHtml(value ? currency(value) : "-") +
+              "</td>";
           });
-
-          let groupGrandTotal = 0;
-
-          centers.forEach((centerName) => {
-            const centerValues = groups[groupName][centerName];
-            let rowTotal = 0;
-
-            bodyHtml += '<tr class="cost-center-row"><td class="cost-sticky">' + escapeHtml(centerName) + "</td>";
-
-            monthKeys.forEach((monthKey) => {
-              const value = toNumber(centerValues[monthKey]);
-              rowTotal += value;
-              groupTotals[monthKey] += value;
-              bodyHtml += "<td>" + escapeHtml(value ? currency(value) : "-") + "</td>";
-            });
-
-            groupGrandTotal += rowTotal;
-            bodyHtml += "<td><strong>" + escapeHtml(currency(rowTotal)) + "</strong></td></tr>";
-          });
-
-          bodyHtml += '<tr class="cost-subtotal-row"><td class="cost-sticky">Total ' + escapeHtml(groupName) + "</td>";
-          monthKeys.forEach((monthKey) => {
-            bodyHtml += "<td>" + escapeHtml(groupTotals[monthKey] ? currency(groupTotals[monthKey]) : "-") + "</td>";
-          });
-          bodyHtml += "<td>" + escapeHtml(currency(groupGrandTotal)) + "</td></tr>";
+          bodyHtml +=
+            '<td style="color:' +
+            (totalGeral >= 0 ? "#1f6f4d" : "#a11d2f") +
+            '">' +
+            escapeHtml(currency(totalGeral)) +
+            "</td>";
+          bodyHtml +=
+            '<td style="color:' +
+            (totalMedia >= 0 ? "#1f6f4d" : "#a11d2f") +
+            '">' +
+            escapeHtml(currency(totalMedia)) +
+            "</td>";
+          bodyHtml += "</tr>";
         });
 
-        if (!hasAnyData) {
-          setCentroCustoStatus("Sem dados de centros de custo para o ano " + selectedYear + ".", false);
-        } else {
-          setCentroCustoStatus("Centros de custo carregados para o ano " + selectedYear + ".", false);
-        }
+        setCentroCustoStatus("Centros de custo carregados para o ano " + selectedYear + ".", false);
 
         centroCustoTableBodyEl.innerHTML = bodyHtml;
       }
