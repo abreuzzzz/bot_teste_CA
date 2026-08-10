@@ -3,6 +3,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard - Indicadores Mantenedores</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -211,6 +212,52 @@
         box-shadow: 0 10px 24px rgba(18, 34, 49, 0.08);
         border: 1px solid #e3eaee;
         overflow: hidden;
+      }
+
+      .cost-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+      }
+
+      .cost-table {
+        min-width: 1100px;
+      }
+
+      .cost-table th,
+      .cost-table td {
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .cost-table .cost-sticky {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        text-align: left;
+        background: #ffffff;
+        min-width: 240px;
+      }
+
+      .cost-table thead .cost-sticky {
+        background: #f1f6f7;
+        z-index: 4;
+      }
+
+      .cost-group-row td {
+        background: #e8f2f5;
+        color: #17353a;
+        font-weight: 700;
+        text-align: left;
+      }
+
+      .cost-center-row td {
+        background: #ffffff;
+      }
+
+      .cost-subtotal-row td {
+        background: #f1f7f9;
+        font-weight: 700;
+        border-top: 2px solid #d5e6eb;
       }
 
       .table-header {
@@ -551,6 +598,19 @@
         </table>
       </section>
 
+      <section class="table-panel">
+        <div class="table-header">Centro de Custo - Entradas e Saidas por Mes</div>
+        <div id="centroCustoStatus" style="padding: 12px; font-size: 13px; color: #4c5f6c; border-bottom: 1px solid #edf2f5;">
+          Aguardando carga da planilha de centros de custo.
+        </div>
+        <div class="cost-table-wrap">
+          <table class="cost-table">
+            <thead id="centroCustoTableHead"></thead>
+            <tbody id="centroCustoTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="charts">
         <article class="chart-card">
           <h3 class="chart-title">Crescimento de Mantenedores de Assinaturas Ativas</h3>
@@ -699,6 +759,9 @@
       const cardsContainer = document.getElementById("cards");
       const tableBody = document.getElementById("groupTableBody");
       const statusEl = document.getElementById("status");
+      const centroCustoStatusEl = document.getElementById("centroCustoStatus");
+      const centroCustoTableHeadEl = document.getElementById("centroCustoTableHead");
+      const centroCustoTableBodyEl = document.getElementById("centroCustoTableBody");
       // Mês e ano vigentes
       function getCurrentMonthYear() {
         const now = new Date();
@@ -733,6 +796,7 @@
       const filterMonthEl = document.getElementById("filterMonth");
       const filterYearEl = document.getElementById("filterYear");
       const exportExcelBtn = document.getElementById("exportExcelBtn");
+      const CENTRO_CUSTO_SHEET_GID = "969303520";
 
       const MONTH_NAMES = [
         "Janeiro",
@@ -791,6 +855,274 @@
         } else {
           filterYearEl.value = String(current.year);
         }
+      }
+
+      function setCentroCustoStatus(message, isError) {
+        if (!centroCustoStatusEl) {
+          return;
+        }
+
+        centroCustoStatusEl.textContent = message;
+        centroCustoStatusEl.style.color = isError ? "#a11d2f" : "#4c5f6c";
+      }
+
+      function parseBrazilianFloat(value) {
+        if (value === undefined || value === null || value === "") {
+          return 0;
+        }
+
+        const stringValue = String(value).trim();
+        if (!stringValue) {
+          return 0;
+        }
+
+        const normalized = stringValue.replace(/\./g, "").replace(",", ".");
+        const number = Number(normalized);
+        return Number.isFinite(number) ? number : 0;
+      }
+
+      function getCentroCustoDateForRow(row) {
+        const lastAcquittance = String(row.lastAcquittanceDate || "").trim();
+        if (lastAcquittance) {
+          return lastAcquittance;
+        }
+        return row.dueDate || "";
+      }
+
+      function getYearMonthFromDate(dateStr) {
+        if (!dateStr) {
+          return "";
+        }
+
+        const normalized = String(dateStr).split("T")[0];
+        const date = new Date(normalized + "T00:00:00");
+        if (Number.isNaN(date.getTime())) {
+          return "";
+        }
+
+        return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+      }
+
+      function normalizeCentroCustoGroup(row) {
+        const rawTipo = String(row.tipo || row["tipo"] || "").toLowerCase();
+        if (rawTipo.includes("receita") || rawTipo.includes("entrada")) {
+          return "Entradas";
+        }
+
+        if (rawTipo.includes("despesa") || rawTipo.includes("saida") || rawTipo.includes("saída")) {
+          return "Saidas";
+        }
+
+        const financialType = String(row["financialEvent.type"] || "").toUpperCase();
+        if (financialType.includes("RECEIV")) {
+          return "Entradas";
+        }
+
+        if (financialType.includes("PAY")) {
+          return "Saidas";
+        }
+
+        return "";
+      }
+
+      function formatMonthKeyLabel(monthKey) {
+        const [year, month] = String(monthKey).split("-");
+        const date = new Date(Number(year), Number(month) - 1, 1);
+        if (Number.isNaN(date.getTime())) {
+          return monthKey;
+        }
+
+        const monthShort = date.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+        return monthShort.charAt(0).toUpperCase() + monthShort.slice(1) + "/" + year;
+      }
+
+      async function resolveGoogleSheetsFileId() {
+        const fromQuery = new URLSearchParams(location.search).get("sheetId");
+        if (fromQuery && fromQuery.trim()) {
+          return fromQuery.trim();
+        }
+
+        const fromStorage = localStorage.getItem("GOOGLE_SHEETS_FILE_ID_TELA");
+        if (fromStorage && fromStorage.trim()) {
+          return fromStorage.trim();
+        }
+
+        try {
+          const response = await fetch("tela_bi.php", { credentials: "include" });
+          if (!response.ok) {
+            return "";
+          }
+
+          const html = await response.text();
+          const match = html.match(/const\s+GOOGLE_SHEETS_FILE_ID_Tela\s*=\s*'([^']+)'/i);
+          if (match && match[1]) {
+            return String(match[1]).trim();
+          }
+        } catch (error) {
+          return "";
+        }
+
+        return "";
+      }
+
+      async function fetchCentroCustoRows() {
+        if (!window.Papa) {
+          throw new Error("Biblioteca de CSV nao carregada.");
+        }
+
+        const sheetId = await resolveGoogleSheetsFileId();
+        if (!sheetId) {
+          throw new Error(
+            "Nao foi possivel identificar o ID da planilha. Abra via tela_bi.php autenticado, ou passe ?sheetId=SEU_ID na URL."
+          );
+        }
+
+        const csvUrl =
+          "https://docs.google.com/spreadsheets/d/" +
+          encodeURIComponent(sheetId) +
+          "/export?format=csv&gid=" +
+          CENTRO_CUSTO_SHEET_GID;
+
+        return new Promise((resolve, reject) => {
+          Papa.parse(csvUrl, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+              if (results && Array.isArray(results.errors) && results.errors.length) {
+                console.warn("Avisos ao ler CSV de centro de custo:", results.errors);
+              }
+
+              const rows = (results && Array.isArray(results.data) ? results.data : [])
+                .map((row) => {
+                  const paid = parseBrazilianFloat(row.paid_new);
+                  const unpaid = parseBrazilianFloat(row.unpaid_new);
+                  const total = paid + unpaid;
+                  const monthKey = getYearMonthFromDate(getCentroCustoDateForRow(row));
+                  const group = normalizeCentroCustoGroup(row);
+                  const costCenter = String(
+                    row["Centro_de_Custo_Unificado"] || row["CentrodeCustoUnificado"] || "Sem centro de custo"
+                  ).trim() || "Sem centro de custo";
+
+                  return {
+                    monthKey,
+                    group,
+                    costCenter,
+                    total
+                  };
+                })
+                .filter((row) => row.monthKey && row.group && row.total !== 0);
+
+              resolve(rows);
+            },
+            error: (error) => {
+              reject(new Error("Falha ao carregar CSV de centro de custo: " + error.message));
+            }
+          });
+        });
+      }
+
+      function renderCentroCustoTable(rows) {
+        const fallback = getCurrentMonthYear();
+        const selectedYear = Number(filterYearEl.value) || fallback.year;
+        const monthKeys = Array.from({ length: 12 }, (_, index) => {
+          return selectedYear + "-" + String(index + 1).padStart(2, "0");
+        });
+
+        let headerHtml = '<tr><th class="cost-sticky">Centro de Custo</th>';
+        monthKeys.forEach((monthKey) => {
+          headerHtml += '<th>' + escapeHtml(formatMonthKeyLabel(monthKey)) + "</th>";
+        });
+        headerHtml += "<th>Total</th></tr>";
+        centroCustoTableHeadEl.innerHTML = headerHtml;
+
+        const groups = {
+          Entradas: {},
+          Saidas: {}
+        };
+
+        (rows || []).forEach((row) => {
+          if (!row || !row.monthKey || !row.group || !row.costCenter) {
+            return;
+          }
+
+          if (!row.monthKey.startsWith(String(selectedYear) + "-")) {
+            return;
+          }
+
+          if (!groups[row.group]) {
+            return;
+          }
+
+          if (!groups[row.group][row.costCenter]) {
+            groups[row.group][row.costCenter] = {};
+          }
+
+          groups[row.group][row.costCenter][row.monthKey] =
+            toNumber(groups[row.group][row.costCenter][row.monthKey]) + toNumber(row.total);
+        });
+
+        const totalColumns = monthKeys.length + 2;
+        let bodyHtml = "";
+        let hasAnyData = false;
+
+        ["Entradas", "Saidas"].forEach((groupName) => {
+          const centers = Object.keys(groups[groupName]).sort((a, b) => a.localeCompare(b, "pt-BR"));
+          bodyHtml +=
+            '<tr class="cost-group-row"><td class="cost-sticky" colspan="' +
+            totalColumns +
+            '">' +
+            escapeHtml(groupName) +
+            "</td></tr>";
+
+          if (!centers.length) {
+            bodyHtml +=
+              '<tr><td class="cost-sticky" colspan="' +
+              totalColumns +
+              '">Sem dados para este grupo no ano selecionado.</td></tr>';
+            return;
+          }
+
+          hasAnyData = true;
+
+          const groupTotals = {};
+          monthKeys.forEach((monthKey) => {
+            groupTotals[monthKey] = 0;
+          });
+
+          let groupGrandTotal = 0;
+
+          centers.forEach((centerName) => {
+            const centerValues = groups[groupName][centerName];
+            let rowTotal = 0;
+
+            bodyHtml += '<tr class="cost-center-row"><td class="cost-sticky">' + escapeHtml(centerName) + "</td>";
+
+            monthKeys.forEach((monthKey) => {
+              const value = toNumber(centerValues[monthKey]);
+              rowTotal += value;
+              groupTotals[monthKey] += value;
+              bodyHtml += "<td>" + escapeHtml(value ? currency(value) : "-") + "</td>";
+            });
+
+            groupGrandTotal += rowTotal;
+            bodyHtml += "<td><strong>" + escapeHtml(currency(rowTotal)) + "</strong></td></tr>";
+          });
+
+          bodyHtml += '<tr class="cost-subtotal-row"><td class="cost-sticky">Total ' + escapeHtml(groupName) + "</td>";
+          monthKeys.forEach((monthKey) => {
+            bodyHtml += "<td>" + escapeHtml(groupTotals[monthKey] ? currency(groupTotals[monthKey]) : "-") + "</td>";
+          });
+          bodyHtml += "<td>" + escapeHtml(currency(groupGrandTotal)) + "</td></tr>";
+        });
+
+        if (!hasAnyData) {
+          setCentroCustoStatus("Sem dados de centros de custo para o ano " + selectedYear + ".", false);
+        } else {
+          setCentroCustoStatus("Centros de custo carregados para o ano " + selectedYear + ".", false);
+        }
+
+        centroCustoTableBodyEl.innerHTML = bodyHtml;
       }
 
       function getSelectedMonthYear() {
@@ -933,6 +1265,7 @@
         });
         renderCards(analytics.cards);
         safeRenderSection("tabela de grupos", () => renderGroupTable(analytics.groupRows));
+        safeRenderSection("tabela de centro de custo", () => renderCentroCustoTable(window._CENTRO_CUSTO_DATA || []));
         safeRenderSection("graficos", () => renderCharts(analytics.charts));
         safeRenderSection("tabelas de adimplencia", () => renderComplianceTables(compliance));
       }
@@ -961,16 +1294,23 @@
             token
           });
 
-          const [customers, subscriptions, rawPayments] = await Promise.all([
+          setCentroCustoStatus("Carregando centros de custo...", false);
+
+          const [customers, subscriptions, rawPayments, centroCustoRows] = await Promise.all([
             fetchAllCustomers(api),
             fetchAllSubscriptions(api),
-            fetchAllPayments(api)
+            fetchAllPayments(api),
+            fetchCentroCustoRows().catch((error) => {
+              setCentroCustoStatus(error.message, true);
+              return [];
+            })
           ]);
           const payments = normalizePaymentsToLatestState(rawPayments);
 
           const customerMap = buildCustomerMap(customers);
           populateGroupFilter(customers, customerMap);
           updateYearOptionsFromData(payments);
+          window._CENTRO_CUSTO_DATA = centroCustoRows;
           window._DASHBOARD_DATA = { customers, subscriptions, payments, customerMap, month, year };
           applyAllFiltersAndRender();
           setStatus(
