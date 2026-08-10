@@ -411,7 +411,7 @@
 
       .compliance-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: 1fr;
         gap: 12px;
       }
 
@@ -579,7 +579,6 @@
             <select id="filterStatus">
               <option value="">Todos</option>
               <option value="adimplente">Adimplente</option>
-              <option value="inadimplente">Inadimplente</option>
             </select>
           </div>
           <button id="applyFiltersBtn" type="button" style="height:36px;padding:0 18px;background:#136f63;color:#fff;border:none;border-radius:8px;font-weight:600;">Aplicar Filtros</button>
@@ -694,7 +693,7 @@
       </section>
 
       <details class="accordion-panel" id="compliancePanel" open>
-        <summary>Clientes Por Grupo - Adimplentes e Inadimplentes (clique para expandir)</summary>
+        <summary>Clientes Por Grupo - Adimplentes (clique para expandir)</summary>
         <div class="accordion-content">
           <div class="compliance-grid">
             <section class="compliance-card">
@@ -708,29 +707,22 @@
                       <th>Contato</th>
                       <th>Modalidade</th>
                       <th>Pago</th>
+                      <th>Janeiro</th>
+                      <th>Fevereiro</th>
+                      <th>Março</th>
+                      <th>Abril</th>
+                      <th>Maio</th>
+                      <th>Junho</th>
+                      <th>Julho</th>
+                      <th>Agosto</th>
+                      <th>Setembro</th>
+                      <th>Outubro</th>
+                      <th>Novembro</th>
+                      <th>Dezembro</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody id="adimplenteTableBody"></tbody>
-                </table>
-              </div>
-            </section>
-
-            <section class="compliance-card">
-              <h4 class="compliance-title">Inadimplentes - <span id="inadimplenteCount">0</span> clientes</h4>
-              <div class="compliance-table-wrap">
-                <table class="compliance-table">
-                  <thead>
-                    <tr>
-                      <th>Grupo</th>
-                      <th>Cliente</th>
-                      <th>Contato</th>
-                      <th>Modalidade</th>
-                      <th>Em atraso</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody id="inadimplenteTableBody"></tbody>
                 </table>
               </div>
             </section>
@@ -805,9 +797,7 @@
       const paymentCategoryOpenChartEl = document.getElementById("paymentCategoryOpenChart");
       const paymentCategoryOpenLegendEl = document.getElementById("paymentCategoryOpenLegend");
       const adimplenteTableBody = document.getElementById("adimplenteTableBody");
-      const inadimplenteTableBody = document.getElementById("inadimplenteTableBody");
       const adimplenteCountEl = document.getElementById("adimplenteCount");
-      const inadimplenteCountEl = document.getElementById("inadimplenteCount");
       const filterMonthEl = document.getElementById("filterMonth");
       const filterYearEl = document.getElementById("filterYear");
       const exportExcelBtn = document.getElementById("exportExcelBtn");
@@ -1278,12 +1268,15 @@
         if (currentFilters.modalidade) {
           filteredPayments = filteredPayments.filter(p => getPaymentCategory(p) === currentFilters.modalidade);
         }
-        // Filtro de status (adimplente/inadimplente)
-        let compliance = buildComplianceData({ customers: filteredCustomers, payments: filteredPayments, customerMap });
+        // Filtro de status
+        let compliance = buildComplianceData({
+          customers: filteredCustomers,
+          payments: filteredPayments,
+          customerMap,
+          selectedYear: year
+        });
         if (currentFilters.status === "adimplente") {
-          compliance = { adimplentes: compliance.adimplentes, inadimplentes: [] };
-        } else if (currentFilters.status === "inadimplente") {
-          compliance = { adimplentes: [], inadimplentes: compliance.inadimplentes };
+          compliance = { adimplentes: compliance.adimplentes };
         }
         // Analytics e gráficos
         const analytics = buildAnalytics({
@@ -1707,16 +1700,18 @@
         const compliance = buildComplianceData({
           customers,
           payments,
-          customerMap
+          customerMap,
+          selectedYear: year
         });
 
         return { cards, groupRows, groupSummary, charts, compliance };
       }
 
-      function buildComplianceData({ customers, payments, customerMap }) {
+      function buildComplianceData({ customers, payments, customerMap, selectedYear }) {
         const customerDetails = new Map();
         const today = new Date();
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const targetYear = Number.isInteger(selectedYear) ? selectedYear : new Date().getFullYear();
 
         customers
           .filter((customer) => customer && customer.id && !customer.deleted)
@@ -1729,6 +1724,7 @@
               email: customer.email || "-",
               phone: customer.mobilePhone || customer.phone || "-",
               paidTotal: 0,
+              paidByMonth: new Array(12).fill(0),
               openTotal: 0,
               overdueTotal: 0,
               pendingFutureTotal: 0,
@@ -1758,6 +1754,13 @@
 
           if (PAID_STATUSES.has(status)) {
             row.paidTotal += value;
+
+            const paidDate = parseDateOnly(
+              payment.paymentDate || payment.clientPaymentDate || payment.confirmedDate || payment.creditDate
+            );
+            if (paidDate && paidDate.getFullYear() === targetYear) {
+              row.paidByMonth[paidDate.getMonth()] += value;
+            }
           }
           if (OPEN_STATUSES.has(status)) {
             row.openTotal += value;
@@ -1780,12 +1783,9 @@
         });
 
         const adimplentes = [];
-        const inadimplentes = [];
 
         customerDetails.forEach((row) => {
-          if (row.overdueTotal > 0) {
-            inadimplentes.push(row);
-          } else {
+          if (row.overdueTotal <= 0) {
             adimplentes.push(row);
           }
         });
@@ -1799,11 +1799,9 @@
         };
 
         adimplentes.sort(sortByGroupAndName);
-        inadimplentes.sort(sortByGroupAndName);
 
         return {
-          adimplentes,
-          inadimplentes
+          adimplentes
         };
       }
 
@@ -2561,26 +2559,24 @@
       }
 
       function renderComplianceTables(compliance) {
-        renderComplianceTableRows(adimplenteTableBody, compliance.adimplentes, true);
-        renderComplianceTableRows(inadimplenteTableBody, compliance.inadimplentes, false);
+        renderComplianceTableRows(adimplenteTableBody, compliance.adimplentes);
         adimplenteCountEl.textContent = integer(compliance.adimplentes.length);
-        inadimplenteCountEl.textContent = integer(compliance.inadimplentes.length);
       }
 
-      function renderComplianceTableRows(tbody, rows, isAdimplente) {
+      function renderComplianceTableRows(tbody, rows) {
         tbody.innerHTML = "";
 
         if (!rows.length) {
           const tr = document.createElement("tr");
           tr.innerHTML =
-            '<td colspan="7" style="color:#6e7e87">Nenhum cliente encontrado nesta classificacao.</td>';
+            '<td colspan="18" style="color:#6e7e87">Nenhum cliente encontrado nesta classificacao.</td>';
           tbody.appendChild(tr);
           return;
         }
 
         rows.forEach((row) => {
-          const badgeClass = isAdimplente ? "ok" : "warn";
-          const badgeLabel = isAdimplente ? "Adimplente" : "Inadimplente";
+          const badgeClass = "ok";
+          const badgeLabel = "Adimplente";
           const categoryLabel =
             row.lastCategory === "subscription"
               ? "Assinatura"
@@ -2590,51 +2586,33 @@
               ? "Avulso"
               : "-";
           const tr = document.createElement("tr");
-          if (isAdimplente) {
-            tr.innerHTML =
-              "<td>" +
-              escapeHtml(row.group) +
-              "</td>" +
-              "<td>" +
-              escapeHtml(row.name) +
-              "</td>" +
-              "<td>" +
-              escapeHtml(row.email + " / " + row.phone) +
-              "</td>" +
-              "<td>" +
-              escapeHtml(categoryLabel) +
-              "</td>" +
-              "<td>" +
-              escapeHtml(currency(row.paidTotal)) +
-              "</td>" +
-              '<td><span class="badge ' +
-              escapeHtml(badgeClass) +
-              '">' +
-              escapeHtml(badgeLabel) +
-              "</span></td>";
-          } else {
-            tr.innerHTML =
-              "<td>" +
-              escapeHtml(row.group) +
-              "</td>" +
-              "<td>" +
-              escapeHtml(row.name) +
-              "</td>" +
-              "<td>" +
-              escapeHtml(row.email + " / " + row.phone) +
-              "</td>" +
-              "<td>" +
-              escapeHtml(categoryLabel) +
-              "</td>" +
-              "<td>" +
-              escapeHtml(currency(row.overdueTotal)) +
-              "</td>" +
-              '<td><span class="badge ' +
-              escapeHtml(badgeClass) +
-              '">' +
-              escapeHtml(badgeLabel) +
-              "</span></td>";
-          }
+
+          const monthCells = (row.paidByMonth || []).map((value) => {
+            return "<td>" + escapeHtml(value > 0 ? currency(value) : "-") + "</td>";
+          }).join("");
+
+          tr.innerHTML =
+            "<td>" +
+            escapeHtml(row.group) +
+            "</td>" +
+            "<td>" +
+            escapeHtml(row.name) +
+            "</td>" +
+            "<td>" +
+            escapeHtml(row.email + " / " + row.phone) +
+            "</td>" +
+            "<td>" +
+            escapeHtml(categoryLabel) +
+            "</td>" +
+            "<td>" +
+            escapeHtml(currency(row.paidTotal)) +
+            "</td>" +
+            monthCells +
+            '<td><span class="badge ' +
+            escapeHtml(badgeClass) +
+            '">' +
+            escapeHtml(badgeLabel) +
+            "</span></td>";
           tbody.appendChild(tr);
         });
       }
