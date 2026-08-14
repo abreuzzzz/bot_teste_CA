@@ -27,6 +27,33 @@ function einscricao_compact_text(string $text): string
     return trim(preg_replace('/\s+/', ' ', $text) ?? '');
 }
 
+function einscricao_contains(string $haystack, string $needle): bool
+{
+    if ($needle === '') {
+        return true;
+    }
+
+    return strpos($haystack, $needle) !== false;
+}
+
+function einscricao_lower(string $text): string
+{
+    if (function_exists('mb_strtolower')) {
+        return mb_strtolower($text, 'UTF-8');
+    }
+
+    return strtolower($text);
+}
+
+function einscricao_substr(string $text, int $start, int $length): string
+{
+    if (function_exists('mb_substr')) {
+        return (string) mb_substr($text, $start, $length, 'UTF-8');
+    }
+
+    return (string) substr($text, $start, $length);
+}
+
 function einscricao_cache_dir(): string
 {
     $dir = __DIR__ . '/cache';
@@ -113,11 +140,13 @@ function einscricao_parse_account_ids_from_value(string $value): array
     }
 
     $result = array_keys($ids);
-    usort($result, static fn(string $a, string $b): int => (int) $a <=> (int) $b);
+    usort($result, static function (string $a, string $b): int {
+        return (int) $a <=> (int) $b;
+    });
     return $result;
 }
 
-function einscricao_to_number_or_null(mixed $value): ?float
+function einscricao_to_number_or_null($value): ?float
 {
     if (is_int($value) || is_float($value)) {
         return is_finite((float) $value) ? (float) $value : null;
@@ -136,7 +165,7 @@ function einscricao_to_number_or_null(mixed $value): ?float
     return null;
 }
 
-function einscricao_collect_numeric_candidates(mixed $raw, string $path = '', array &$output = []): array
+function einscricao_collect_numeric_candidates($raw, string $path = '', array &$output = []): array
 {
     if ($raw === null) {
         return $output;
@@ -160,12 +189,14 @@ function einscricao_collect_numeric_candidates(mixed $raw, string $path = '', ar
 
 function einscricao_pick_by_keywords(array $candidates, array $keywords): ?float
 {
-    $keywords = array_map(static fn(string $k): string => mb_strtolower($k), $keywords);
+    $keywords = array_map(static function (string $k): string {
+        return einscricao_lower($k);
+    }, $keywords);
     foreach ($candidates as $entry) {
-        $path = mb_strtolower((string) ($entry['path'] ?? ''));
+        $path = einscricao_lower((string) ($entry['path'] ?? ''));
         $ok = true;
         foreach ($keywords as $kw) {
-            if (!str_contains($path, $kw)) {
+            if (!einscricao_contains($path, $kw)) {
                 $ok = false;
                 break;
             }
@@ -216,7 +247,7 @@ function einscricao_collect_ids_from_text(string $text, array &$collector): void
     }
 }
 
-function einscricao_collect_ids_from_json(mixed $raw, array &$collector, string $path = ''): void
+function einscricao_collect_ids_from_json($raw, array &$collector, string $path = ''): void
 {
     if (!is_array($raw)) {
         return;
@@ -246,9 +277,9 @@ function einscricao_collect_ids_from_json(mixed $raw, array &$collector, string 
 
 final class EinscricaoClient
 {
-    private array $cookies = [];
-    private string $email;
-    private string $password;
+    private $cookies = [];
+    private $email;
+    private $password;
 
     public function __construct(string $email, string $password)
     {
@@ -329,7 +360,7 @@ final class EinscricaoClient
                 throw new EinscricaoAuthException('Sessao expirada ao descobrir contas financeiras.');
             }
 
-            if ($response['status'] >= 300 && $response['status'] < 400 && str_contains((string) ($response['headers']['location'] ?? ''), '/users/sign_in')) {
+            if ($response['status'] >= 300 && $response['status'] < 400 && einscricao_contains((string) ($response['headers']['location'] ?? ''), '/users/sign_in')) {
                 throw new EinscricaoAuthException('Descoberta de contas redirecionou para login.');
             }
 
@@ -347,7 +378,9 @@ final class EinscricaoClient
         }
 
         $ids = array_keys($collector);
-        usort($ids, static fn(string $a, string $b): int => (int) $a <=> (int) $b);
+        usort($ids, static function (string $a, string $b): int {
+            return (int) $a <=> (int) $b;
+        });
         return $ids;
     }
 
@@ -375,7 +408,7 @@ final class EinscricaoClient
             throw new EinscricaoAuthException('Sessao expirada ou sem autorizacao no endpoint financeiro.');
         }
 
-        if ($response['status'] >= 300 && $response['status'] < 400 && str_contains((string) ($response['headers']['location'] ?? ''), '/users/sign_in')) {
+        if ($response['status'] >= 300 && $response['status'] < 400 && einscricao_contains((string) ($response['headers']['location'] ?? ''), '/users/sign_in')) {
             throw new EinscricaoAuthException('Endpoint financeiro redirecionou para login.');
         }
 
@@ -461,7 +494,7 @@ final class EinscricaoClient
         $setCookies = [];
         $lines = preg_split('/\r\n|\n|\r/', $headerText) ?: [];
         foreach ($lines as $line) {
-            if (!str_contains($line, ':')) {
+            if (!einscricao_contains($line, ':')) {
                 continue;
             }
 
@@ -549,9 +582,9 @@ final class EinscricaoClient
         return $headers;
     }
 
-    private function throwHttpStepError(string $step, array $response): never
+    private function throwHttpStepError(string $step, array $response): void
     {
-        $bodySnippet = mb_substr(einscricao_compact_text((string) ($response['body'] ?? '')), 0, 280);
+        $bodySnippet = einscricao_substr(einscricao_compact_text((string) ($response['body'] ?? '')), 0, 280);
         $headers = $response['headers'] ?? [];
         $cfRay = (string) ($headers['cf-ray'] ?? 'n/a');
         $server = (string) ($headers['server'] ?? 'n/a');
