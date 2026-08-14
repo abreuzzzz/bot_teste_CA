@@ -57,7 +57,7 @@ try {
 } catch (Throwable $error) {
     $message = $error->getMessage();
 
-    if (str_contains($message, 'HTTP 403')) {
+    if (einscricao_contains($message, 'HTTP 403')) {
         einscricao_json_response(502, [
             'message' => 'Acesso ao e-inscricao bloqueado (HTTP 403).',
             'details' => $message,
