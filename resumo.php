@@ -66,7 +66,9 @@ try {
     }
 
     $accountIds = array_values(array_unique($accountIds));
-    usort($accountIds, static fn(string $a, string $b): int => (int) $a <=> (int) $b);
+    usort($accountIds, static function (string $a, string $b): int {
+        return (int) $a <=> (int) $b;
+    });
 
     if (empty($accountIds)) {
         einscricao_json_response(404, [
@@ -114,9 +116,16 @@ try {
         throw new RuntimeException($firstError);
     }
 
+    $sumSaldoAtual = 0.0;
+    $sumSaldoAReceber = 0.0;
+    foreach ($contas as $row) {
+        $sumSaldoAtual += (float) ($row['saldoAtual'] ?? 0);
+        $sumSaldoAReceber += (float) ($row['saldoAReceber'] ?? 0);
+    }
+
     $payload = [
-        'saldoAtual' => array_reduce($contas, static fn(float $sum, array $row): float => $sum + (float) ($row['saldoAtual'] ?? 0), 0.0),
-        'saldoAReceber' => array_reduce($contas, static fn(float $sum, array $row): float => $sum + (float) ($row['saldoAReceber'] ?? 0), 0.0),
+        'saldoAtual' => $sumSaldoAtual,
+        'saldoAReceber' => $sumSaldoAReceber,
         'atualizadoEm' => gmdate('c'),
         'accountIds' => $accountIds,
         'contas' => $contas,
@@ -141,7 +150,7 @@ try {
 } catch (Throwable $error) {
     $message = $error->getMessage();
 
-    if (str_contains($message, 'HTTP 403')) {
+    if (einscricao_contains($message, 'HTTP 403')) {
         einscricao_json_response(502, [
             'message' => 'Acesso ao e-inscricao bloqueado (HTTP 403).',
             'details' => $message,
