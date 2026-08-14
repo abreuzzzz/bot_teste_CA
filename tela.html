@@ -165,6 +165,75 @@
         gap: 12px;
       }
 
+      .finance-summary-panel {
+        margin-top: 18px;
+        background: var(--panel);
+        border-radius: var(--radius);
+        border: 1px solid #e3eaee;
+        box-shadow: 0 10px 24px rgba(18, 34, 49, 0.08);
+        padding: 14px;
+      }
+
+      .finance-summary-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .finance-summary-title {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 17px;
+        color: #17353a;
+      }
+
+      .finance-summary-status {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: #5d6b75;
+        min-height: 18px;
+      }
+
+      .finance-summary-status.error {
+        color: #a11d2f;
+      }
+
+      .finance-summary-grid {
+        margin-top: 10px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .finance-card {
+        border: 1px solid #e3eaee;
+        border-radius: 14px;
+        padding: 14px;
+        background: linear-gradient(145deg, #ffffff 0%, #f8fcfb 100%);
+      }
+
+      .finance-card h3 {
+        margin: 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .finance-card-value {
+        margin: 8px 0 4px;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: clamp(18px, 2.2vw, 28px);
+        letter-spacing: -0.4px;
+        color: #0f5f54;
+      }
+
+      .finance-card-detail {
+        margin: 0;
+        font-size: 12px;
+        color: #687781;
+      }
+
       .card {
         background: var(--panel);
         border-radius: var(--radius);
@@ -516,6 +585,10 @@
         .compliance-grid {
           grid-template-columns: 1fr;
         }
+
+        .finance-summary-grid {
+          grid-template-columns: 1fr;
+        }
       }
 
       @media (max-width: 720px) {
@@ -528,6 +601,10 @@
         }
 
         .cards {
+          grid-template-columns: 1fr;
+        }
+
+        .finance-summary-grid {
           grid-template-columns: 1fr;
         }
 
@@ -594,6 +671,14 @@
         </div>
         <div id="status" class="status"></div>
       </header>
+
+      <section class="finance-summary-panel" aria-live="polite">
+        <div class="finance-summary-header">
+          <h2 class="finance-summary-title">Resumo Financeiro e-inscricao</h2>
+          <p id="financeStatus" class="finance-summary-status">Aguardando atualizacao...</p>
+        </div>
+        <div id="financeCards" class="finance-summary-grid"></div>
+      </section>
 
       <section id="cards" class="cards"></section>
       <section class="table-panel">
@@ -798,10 +883,46 @@
       const paymentCategoryOpenLegendEl = document.getElementById("paymentCategoryOpenLegend");
       const adimplenteTableBody = document.getElementById("adimplenteTableBody");
       const adimplenteCountEl = document.getElementById("adimplenteCount");
+      const financeCardsEl = document.getElementById("financeCards");
+      const financeStatusEl = document.getElementById("financeStatus");
       const filterMonthEl = document.getElementById("filterMonth");
       const filterYearEl = document.getElementById("filterYear");
       const exportExcelBtn = document.getElementById("exportExcelBtn");
       const CENTRO_CUSTO_SHEET_GID = "969303520";
+      const FINANCE_REFRESH_MS = 5 * 60 * 1000;
+
+      function resolveFinanceSummaryEndpoint() {
+        const configured =
+          (window.EINSCRICAO_API_URL && String(window.EINSCRICAO_API_URL).trim()) ||
+          (window.EINSCRICAO_WORKER_URL && String(window.EINSCRICAO_WORKER_URL).trim());
+
+        if (!configured) {
+          return "/api/financeiro/resumo.php?accountId=all";
+        }
+
+        if (configured.includes("SEU-ENDPOINT") || configured.includes("SEU-WORKER")) {
+          return configured;
+        }
+
+        if (
+          configured.endsWith("/api/financeiro/resumo") ||
+          configured.endsWith("/api/financeiro/resumo.php") ||
+          configured.includes("/api/financeiro/resumo?") ||
+          configured.includes("/api/financeiro/resumo.php?")
+        ) {
+          return configured;
+        }
+
+        if (configured.endsWith(".php")) {
+          return configured;
+        }
+
+        const cleaned = configured.endsWith("/") ? configured.slice(0, -1) : configured;
+        return cleaned + "/api/financeiro/resumo.php?accountId=all";
+      }
+
+      const FINANCE_SUMMARY_ENDPOINT = resolveFinanceSummaryEndpoint();
+      let financeRefreshIntervalId = null;
 
       const MONTH_NAMES = [
         "Janeiro",
@@ -1361,6 +1482,11 @@
       window.addEventListener('DOMContentLoaded', () => {
         setupMonthYearFilters();
         loadDashboard();
+        loadFinanceSummary();
+        if (financeRefreshIntervalId) {
+          clearInterval(financeRefreshIntervalId);
+        }
+        financeRefreshIntervalId = setInterval(loadFinanceSummary, FINANCE_REFRESH_MS);
       });
 
       exportExcelBtn.addEventListener("click", exportBaseToExcel);
@@ -2348,6 +2474,149 @@
         const date = new Date(year, month - 1, 1);
         const monthName = date.toLocaleDateString("pt-BR", { month: "long" });
         return monthName.charAt(0).toUpperCase() + monthName.slice(1) + "/" + year;
+      }
+
+      function formatDateTimeBR(isoDate) {
+        if (!isoDate) {
+          return "";
+        }
+
+        const date = new Date(isoDate);
+        if (Number.isNaN(date.getTime())) {
+          return "";
+        }
+
+        return date.toLocaleString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+      }
+
+      function renderFinanceSummary({ saldoAtual, saldoAReceber, loading, errorMessage, atualizadoEm }) {
+        if (!financeCardsEl || !financeStatusEl) {
+          return;
+        }
+
+        const atualValue = Number.isFinite(Number(saldoAtual)) ? currency(saldoAtual) : "--";
+        const receberValue = Number.isFinite(Number(saldoAReceber)) ? currency(saldoAReceber) : "--";
+        const atualizadoLabel = formatDateTimeBR(atualizadoEm);
+
+        const detailAtual = loading
+          ? "Carregando saldo disponivel para resgate..."
+          : errorMessage
+          ? "Nao foi possivel atualizar no momento."
+          : atualizadoLabel
+          ? "Atualizado em " + atualizadoLabel
+          : "Sem horario de atualizacao";
+
+        const detailReceber = loading
+          ? "Carregando saldo a liberar..."
+          : errorMessage
+          ? "Tente novamente em alguns minutos."
+          : "Saldo a liberar conforme periodo informado.";
+
+        financeCardsEl.innerHTML =
+          '<article class="finance-card">' +
+          "<h3>Saldo Atual</h3>" +
+          '<div class="finance-card-value">' +
+          escapeHtml(atualValue) +
+          "</div>" +
+          '<p class="finance-card-detail">' +
+          escapeHtml(detailAtual) +
+          "</p>" +
+          "</article>" +
+          '<article class="finance-card">' +
+          "<h3>Saldo a Receber</h3>" +
+          '<div class="finance-card-value">' +
+          escapeHtml(receberValue) +
+          "</div>" +
+          '<p class="finance-card-detail">' +
+          escapeHtml(detailReceber) +
+          "</p>" +
+          "</article>";
+
+        if (loading) {
+          financeStatusEl.textContent = "Atualizando resumo financeiro...";
+          financeStatusEl.className = "finance-summary-status";
+          return;
+        }
+
+        if (errorMessage) {
+          financeStatusEl.textContent = errorMessage;
+          financeStatusEl.className = "finance-summary-status error";
+          return;
+        }
+
+        financeStatusEl.textContent = atualizadoLabel
+          ? "Ultima atualizacao: " + atualizadoLabel
+          : "Resumo financeiro atualizado.";
+        financeStatusEl.className = "finance-summary-status";
+      }
+
+      async function loadFinanceSummary() {
+        renderFinanceSummary({
+          saldoAtual: null,
+          saldoAReceber: null,
+          loading: true,
+          errorMessage: "",
+          atualizadoEm: ""
+        });
+
+        try {
+          if (FINANCE_SUMMARY_ENDPOINT.includes("SEU-ENDPOINT") || FINANCE_SUMMARY_ENDPOINT.includes("SEU-WORKER")) {
+            throw new Error("Configure window.EINSCRICAO_API_URL com a URL da API PHP (ou do Worker). ");
+          }
+
+          const response = await fetch(FINANCE_SUMMARY_ENDPOINT, {
+            method: "GET",
+            headers: { Accept: "application/json" }
+          });
+
+          const payload = await response.json().catch(() => null);
+
+          if (response.status === 401) {
+            const message401 =
+              payload && payload.message
+                ? payload.message
+                : "Nao autorizado. Verifique credenciais do e-inscricao no backend.";
+            const authError = new Error(message401);
+            authError.code = 401;
+            throw authError;
+          }
+
+          if (!response.ok) {
+            const genericMessage =
+              payload && payload.message
+                ? payload.message
+                : "Falha ao carregar resumo financeiro.";
+            throw new Error(genericMessage);
+          }
+
+          renderFinanceSummary({
+            saldoAtual: payload && payload.saldoAtual,
+            saldoAReceber: payload && payload.saldoAReceber,
+            loading: false,
+            errorMessage: "",
+            atualizadoEm: payload && payload.atualizadoEm
+          });
+        } catch (error) {
+          const message =
+            error && error.code === 401
+              ? "Sessao e-inscricao invalida. Confira usuario/senha no Worker."
+              : "Nao foi possivel carregar o resumo financeiro (erro interno).";
+
+          renderFinanceSummary({
+            saldoAtual: null,
+            saldoAReceber: null,
+            loading: false,
+            errorMessage: message,
+            atualizadoEm: ""
+          });
+          console.error("Falha ao buscar resumo financeiro:", error);
+        }
       }
 
       function renderCards(cards) {
