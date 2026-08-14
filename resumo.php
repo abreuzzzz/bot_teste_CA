@@ -151,10 +151,11 @@ try {
     $message = $error->getMessage();
 
     if (einscricao_contains($message, 'HTTP 403')) {
-        einscricao_json_response(502, [
+        einscricao_json_response(409, [
             'message' => 'Acesso ao e-inscricao bloqueado (HTTP 403).',
             'details' => $message,
             'hint' => 'O upstream pode estar bloqueando trafego automatizado deste host. Solicite whitelist ao e-inscricao.',
+            'code' => 'EINSCRICAO_UPSTREAM_BLOCKED',
         ]);
         exit;
     }
