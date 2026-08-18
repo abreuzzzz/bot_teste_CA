@@ -1371,7 +1371,7 @@ body {
 .sidebar-toggle-btn {
     position: absolute;
     top: 12px;
-    right: 12px;
+    left: 12px;
     width: 26px;
     height: 26px;
     background: linear-gradient(135deg, #FFD700, #FFA500);
@@ -1709,7 +1709,7 @@ body.sidebar-collapsed .main-content {
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <button class="sidebar-toggle-btn" id="sidebarToggleBtn" onclick="toggleSidebarMinimize()" title="Minimizar menu">◀</button>
+                <button class="sidebar-toggle-btn" id="sidebarToggleBtn" onclick="toggleSidebarMinimize()" title="Minimizar menu"><i class="fas fa-bars"></i></button>
                 <img src="formas.png" alt="Logo" class="logo-image">
             </div>
             
@@ -1909,8 +1909,8 @@ body.sidebar-collapsed .main-content {
                             </div>
                         </div>
 
-                        <!-- Row 2: Geração de Caixa + Fluxos de Caixa -->
-                        <div class="vg-2col">
+                        <!-- Row 2: Geração de Caixa (full width) -->
+                        <div style="margin-bottom:16px;">
                             <div class="vg-panel">
                                 <div class="vg-panel-title"><i class="fas fa-chart-line" style="color:#FFD700"></i> Geração de Caixa</div>
                                 <div class="vg-geracao-row">
@@ -1928,12 +1928,8 @@ body.sidebar-collapsed .main-content {
                                             <div class="vg-geracao-value" id="caixaMes">R$ 0,00</div>
                                         </div>
                                     </div>
-                                    <div id="chartGeracaoCaixa" style="flex:1;min-height:130px;"></div>
+                                    <div id="chartGeracaoCaixa" style="flex:1;min-height:180px;"></div>
                                 </div>
-                            </div>
-                            <div class="vg-panel">
-                                <div class="vg-panel-title"><i class="fas fa-circle-notch" style="color:#FFD700"></i> Fluxos de Caixa</div>
-                                <div id="chartFluxosDistribuicao" style="min-height:160px;"></div>
                             </div>
                         </div>
 
@@ -2034,38 +2030,19 @@ body.sidebar-collapsed .main-content {
                             </div>
                         </div>
 
-                        <!-- Row 7: 5 Categorias + Retirada -->
-                        <div class="vg-row-bottom">
+                        <!-- Row 7: 5 Categorias de Saídas -->
+                        <div style="margin-bottom:16px;">
                             <div class="vg-panel">
                                 <div class="vg-panel-title">5 Categorias de Saídas x Faturamento</div>
                                 <div id="chartTop5Categorias" style="min-height:200px;"></div>
                             </div>
-                            <div class="vg-panel">
-                                <div class="vg-panel-title">Retirada</div>
-                                <div style="font-size:0.75em;color:#64748b;text-transform:uppercase;font-weight:600;">Saldo da Retirada:</div>
-                                <div class="vg-retirada-value" id="retiradaVG">R$ 0,00</div>
-                                <input type="range" id="retiradaSlider" class="slider-input" min="0" value="0" style="margin:10px 0;">
-                                <div class="vg-slider-labels">
-                                    <span>0</span>
-                                    <span id="retiradaSliderLabel">R$ 0,00</span>
-                                    <span id="retiradaMaxLabel">R$ 0,00</span>
-                                </div>
-                                <div style="margin-top:14px;font-size:0.75em;color:#64748b;text-transform:uppercase;font-weight:600;">Máximo de retirada sugerido:</div>
-                                <div class="vg-retirada-max-val" id="retiradaMaxVG">R$ 0,00</div>
-                            </div>
                         </div>
 
-                        <!-- Gráficos históricos (compat.) -->
+                        <!-- Gráfico histórico -->
                         <hr class="vg-section-sep">
-                        <div class="charts-row">
-                            <div class="chart">
-                                <h2>Receitas e Despesas por Mês</h2>
-                                <div id="chartReceitasDespesas"></div>
-                            </div>
-                            <div class="chart">
-                                <h2>Total do Período</h2>
-                                <div id="chartValorLiquido"></div>
-                            </div>
+                        <div class="chart">
+                            <h2>Balanço Financeiro por Tipo</h2>
+                            <div id="chartValorLiquido"></div>
                         </div>
 
                         <!-- hidden KPIs compat -->
@@ -3792,9 +3769,7 @@ function getYearMonthFromDate(dateStr) {
             setT('retiradaVG', retiradaSug);
             setT('retiradaMaxVG', retiradaMax * 0.3);
 
-            createRevenueExpenseChart(filteredData);
             createNetValueChart(filteredData);
-            createFluxosDistribuicaoChart(filteredData);
             createGeracaoCaixaChart();
             createTop5CategoriasChart(filteredData);
             buildVGSparklines();
@@ -4299,52 +4274,53 @@ function getYearMonthFromDate(dateStr) {
         function createNetValueChart(data) {
     const monthlyData = groupByMonth(data, currentDateType);
     const months = Object.keys(monthlyData).sort();
-    
-    const netValues = months.map(month => 
-        monthlyData[month].receita - monthlyData[month].despesa
-    );
-    
+
+    const receitas = months.map(month => monthlyData[month].receita);
+    const despesas = months.map(month => monthlyData[month].despesa);
+
     const monthLabels = months.map(m => {
         const [year, month] = m.split('-');
         return `${month}/${year}`;
     });
-    
-    const trace = {
+
+    const traceReceita = {
         x: monthLabels,
-        y: netValues,
-        name: 'Valor Líquido',
+        y: receitas,
+        name: 'Receita',
         type: 'scatter',
-        mode: 'lines+markers+text',
-        line: { color: '#667eea', width: 3 },
-        marker: { size: 8, color: '#764ba2' },
-        text: netValues.map(v => formatCompactValue(v)),
-        textposition: 'top center',
-        textfont: {
-            family: 'Inter, sans-serif',
-            size: 12,
-            color: '#ffffff',  // ← ALTERADO PARA BRANCO
-            weight: 'bold'
-        }
+        mode: 'lines+markers',
+        line: { color: '#4ade80', width: 3, shape: 'spline', smoothing: 1.3 },
+        marker: { size: 7, color: '#4ade80' },
+        fill: 'tozeroy',
+        fillcolor: 'rgba(74, 222, 128, 0.07)'
     };
-    
+
+    const traceDespesa = {
+        x: monthLabels,
+        y: despesas,
+        name: 'Despesa',
+        type: 'scatter',
+        mode: 'lines+markers',
+        line: { color: '#f87171', width: 3, shape: 'spline', smoothing: 1.3 },
+        marker: { size: 7, color: '#f87171' },
+        fill: 'tozeroy',
+        fillcolor: 'rgba(248, 113, 113, 0.06)'
+    };
+
     const layout = {
-        xaxis: { title: 'Mês',
-        showgrid: false },
-        yaxis: { title: 'Total do Período (R$)' },
-        hovermode: 'closest',
-        showlegend: false,
+        xaxis: { title: 'Mês', showgrid: false },
+        yaxis: { title: 'Valor (R$)', gridcolor: 'rgba(255,255,255,0.08)' },
+        hovermode: 'x unified',
+        showlegend: true,
+        legend: { orientation: 'h', y: -0.2, font: { color: '#cbd5e1' } },
         hoverlabel: {
             bgcolor: 'rgba(15, 15, 35, 0.95)',
             bordercolor: 'rgba(255, 215, 0, 0.5)',
-            font: {
-                family: 'Inter, sans-serif',
-                size: 13,
-                color: '#ffffff'
-            }
+            font: { family: 'Inter, sans-serif', size: 13, color: '#ffffff' }
         }
     };
-    
-    Plotly.newPlot('chartValorLiquido', [trace], layout, { responsive: true });
+
+    Plotly.newPlot('chartValorLiquido', [traceReceita, traceDespesa], layout, { responsive: true });
 }
 
 
@@ -8310,15 +8286,10 @@ document.addEventListener('DOMContentLoaded', function() {
 // ===== SIDEBAR MINIMIZE =====
 function toggleSidebarMinimize() {
     const sidebar = document.getElementById('sidebar');
-    const btn = document.getElementById('sidebarToggleBtn');
     const isCollapsed = sidebar.classList.toggle('collapsed');
     if (isCollapsed) {
-        btn.textContent = '▶';
-        btn.title = 'Expandir menu';
         document.body.classList.add('sidebar-collapsed');
     } else {
-        btn.textContent = '◀';
-        btn.title = 'Minimizar menu';
         document.body.classList.remove('sidebar-collapsed');
     }
     setTimeout(() => { if (typeof resizePlotlyCharts === 'function') resizePlotlyCharts(); }, 350);
