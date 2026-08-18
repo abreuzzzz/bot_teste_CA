@@ -107,7 +107,7 @@ $GOOGLE_SHEETS_FILE_ID_Bluefields = getenv('GOOGLE_SHEETS_FILE_ID_Bluefields');
         height: 100vh;
         overflow-y: auto;
         box-shadow: 8px 0 32px rgba(0, 0, 0, 0.4);
-        transition: transform 0.3s ease;
+        transition: transform 0.3s ease, width 0.3s ease;
         z-index: 1000;
     }
     
@@ -205,6 +205,7 @@ $GOOGLE_SHEETS_FILE_ID_Bluefields = getenv('GOOGLE_SHEETS_FILE_ID_Bluefields');
         min-height: 100vh;
         width: calc(100vw - 260px);
         overflow-x: hidden;
+        transition: margin-left 0.3s ease, width 0.3s ease;
     }
     
     .content-wrapper {
@@ -1361,7 +1362,233 @@ body {
 .pdf-loading-spinner { border: 4px solid rgba(255, 215, 0, 0.3); border-top: 4px solid #FFD700; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
+/* ===== SIDEBAR MINIMIZE ===== */
+.sidebar-header {
+    position: relative;
+}
+.sidebar-toggle-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 26px;
+    height: 26px;
+    background: linear-gradient(135deg, #FFD700, #FFA500);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0f0f23;
+    font-size: 11px;
+    font-weight: 900;
+    z-index: 1;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    transition: all 0.3s ease;
+    line-height: 1;
+    padding: 0;
+}
+.sidebar-toggle-btn:hover {
+    transform: scale(1.15);
+    box-shadow: 0 4px 14px rgba(255,215,0,0.5);
+}
+.sidebar.collapsed {
+    width: 64px;
+    overflow-y: auto;
+    overflow-x: visible;
+}
+.sidebar.collapsed .sidebar-header {
+    padding: 14px 8px;
+}
+.sidebar.collapsed .logo-image {
+    width: 36px;
+}
+.sidebar.collapsed .sidebar-header h1,
+.sidebar.collapsed .sidebar-header p {
+    display: none;
+}
+.sidebar.collapsed .sidebar-menu a {
+    justify-content: center;
+    padding: 14px 8px;
+    gap: 0;
+    border-left-color: transparent !important;
+}
+.sidebar.collapsed .sidebar-menu a.active {
+    border-radius: 8px;
+    margin: 0 4px;
+}
+.sidebar.collapsed .sidebar-menu a span:not(.icon) {
+    display: none;
+}
+.sidebar.collapsed .sidebar-menu .icon {
+    font-size: 1.5em;
+    width: auto;
+}
+body.sidebar-collapsed .main-content {
+    margin-left: 64px;
+    width: calc(100vw - 64px);
+}
 
+/* Emoji grayscale - monochrome */
+.sidebar-menu .icon {
+    filter: grayscale(100%);
+}
+
+/* ===== FULLSCREEN BUTTON ===== */
+.fullscreen-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #94a3b8;
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+.fullscreen-btn:hover {
+    background: rgba(255,215,0,0.12);
+    border-color: rgba(255,215,0,0.4);
+    color: #FFD700;
+}
+
+/* ===== CUSTOM MULTI-SELECT DROPDOWN ===== */
+.filter-instruction { display: none !important; }
+
+.custom-multiselect {
+    position: relative;
+    width: 100%;
+}
+.custom-multiselect-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    font-size: 13px;
+    background: rgba(15, 15, 35, 0.6);
+    backdrop-filter: blur(10px);
+    color: #e2e8f0;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    user-select: none;
+    min-height: 40px;
+}
+.custom-multiselect-trigger:hover,
+.custom-multiselect.open .custom-multiselect-trigger {
+    border-color: rgba(255, 215, 0, 0.5);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.15);
+    background: rgba(15, 15, 35, 0.8);
+}
+.custom-multiselect-trigger .trigger-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #64748b;
+}
+.custom-multiselect-trigger .trigger-label.has-value {
+    color: #e2e8f0;
+}
+.custom-multiselect-trigger .trigger-label .badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #FFD700, #FFA500);
+    color: #0f0f23;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 10px;
+    margin-left: 6px;
+}
+.custom-multiselect-trigger .arrow {
+    font-size: 10px;
+    transition: transform 0.3s;
+    opacity: 0.6;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+.custom-multiselect.open .custom-multiselect-trigger .arrow {
+    transform: rotate(180deg);
+}
+.custom-multiselect-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: rgba(12, 12, 28, 0.99);
+    border: 1px solid rgba(255, 215, 0, 0.25);
+    border-radius: 10px;
+    z-index: 9999;
+    max-height: 240px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    backdrop-filter: blur(20px);
+    flex-direction: column;
+}
+.custom-multiselect.open .custom-multiselect-dropdown {
+    display: flex;
+}
+.custom-multiselect-search {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    flex-shrink: 0;
+}
+.custom-multiselect-search input {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #e2e8f0;
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+}
+.custom-multiselect-search input::placeholder { color: #475569; }
+.custom-multiselect-search input:focus {
+    border-color: rgba(255,215,0,0.35);
+}
+.custom-multiselect-list {
+    overflow-y: auto;
+    flex: 1;
+}
+.custom-multiselect-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 13px;
+    color: #cbd5e1;
+}
+.custom-multiselect-option:hover {
+    background: rgba(255, 215, 0, 0.08);
+    color: #fff;
+}
+.custom-multiselect-option.selected {
+    color: #FFD700;
+    background: rgba(255, 215, 0, 0.06);
+}
+.custom-multiselect-option input[type="checkbox"] {
+    accent-color: #FFD700;
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.custom-multiselect-option .option-label {
+    flex: 1;
+}
 
 </style>
 
@@ -1384,8 +1611,10 @@ body {
             </button>
         </div>
         
-        <!-- Div vazia para balancear o espaço -->
-        <div style="width: 200px;"></div>
+        <!-- Controles direita -->
+        <div style="display:flex;align-items:center;gap:10px;min-width:200px;justify-content:flex-end;">
+            <button class="fullscreen-btn" id="fullscreenBtn" onclick="toggleFullscreen()">⛶ Tela Cheia</button>
+        </div>
     </div>
 
     <button class="mobile-toggle" onclick="toggleSidebar()">☰</button>
@@ -1394,7 +1623,8 @@ body {
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                 <img src="formas.png" alt="Logo" class="logo-image">
+                <button class="sidebar-toggle-btn" id="sidebarToggleBtn" onclick="toggleSidebarMinimize()" title="Minimizar menu">◀</button>
+                <img src="formas.png" alt="Logo" class="logo-image">
             </div>
             
             <ul class="sidebar-menu">
@@ -2985,14 +3215,12 @@ document.getElementById('fluxoFilterDRE').addEventListener('change', loadDREData
         option.textContent = useStatusMapping ? getStatusLabel(item) : item;
         select.appendChild(option);
     });
-}
 
-        
-        function isDateInRange(dateStr, startMonth, endMonth) {
-    if (!dateStr) return true;
-    
-    // Se não houver filtro de data, retornar true
-    if (!startMonth && !endMonth) return true;
+        // Atualizar dropdown customizado se existir
+        const wrapper = select.closest('.custom-multiselect');
+        if (wrapper && typeof syncDropdownFromSelect === 'function') {
+            syncDropdownFromSelect(wrapper, select);
+        }
     
     // Normalizar a data removendo timezone e convertendo para objeto Date
     let dateObj;
@@ -7578,6 +7806,150 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 }
 
+
+
+// ===== SIDEBAR MINIMIZE =====
+function toggleSidebarMinimize() {
+    const sidebar = document.getElementById('sidebar');
+    const btn = document.getElementById('sidebarToggleBtn');
+    const isCollapsed = sidebar.classList.toggle('collapsed');
+    if (isCollapsed) {
+        btn.textContent = '▶';
+        btn.title = 'Expandir menu';
+        document.body.classList.add('sidebar-collapsed');
+    } else {
+        btn.textContent = '◀';
+        btn.title = 'Minimizar menu';
+        document.body.classList.remove('sidebar-collapsed');
+    }
+    setTimeout(() => { if (typeof resizePlotlyCharts === 'function') resizePlotlyCharts(); }, 350);
+}
+
+// ===== FULLSCREEN =====
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(function(err) {
+            console.error('Erro tela cheia:', err);
+        });
+    } else {
+        document.exitFullscreen();
+    }
+}
+document.addEventListener('fullscreenchange', function() {
+    var btn = document.getElementById('fullscreenBtn');
+    if (!btn) return;
+    btn.innerHTML = document.fullscreenElement ? '✕ Sair Tela Cheia' : '⛶ Tela Cheia';
+});
+
+// ===== CUSTOM MULTI-SELECT DROPDOWN =====
+function buildCustomDropdown(selectEl) {
+    var wrapper = document.createElement('div');
+    wrapper.className = 'custom-multiselect';
+    var trigger = document.createElement('div');
+    trigger.className = 'custom-multiselect-trigger';
+    trigger.innerHTML = '<span class="trigger-label">Todos</span><span class="arrow">▼</span>';
+    var dropdown = document.createElement('div');
+    dropdown.className = 'custom-multiselect-dropdown';
+    var searchDiv = document.createElement('div');
+    searchDiv.className = 'custom-multiselect-search';
+    searchDiv.innerHTML = '<input type="text" placeholder="Buscar...">';
+    var list = document.createElement('div');
+    list.className = 'custom-multiselect-list';
+    dropdown.appendChild(searchDiv);
+    dropdown.appendChild(list);
+    wrapper.appendChild(trigger);
+    wrapper.appendChild(dropdown);
+    selectEl.style.display = 'none';
+    selectEl.parentNode.insertBefore(wrapper, selectEl);
+    wrapper.appendChild(selectEl);
+
+    // Toggle dropdown on trigger click
+    trigger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var isOpen = wrapper.classList.contains('open');
+        document.querySelectorAll('.custom-multiselect.open').forEach(function(el) { el.classList.remove('open'); });
+        if (!isOpen) {
+            wrapper.classList.add('open');
+            var inp = wrapper.querySelector('.custom-multiselect-search input');
+            if (inp) { inp.value = ''; filterCustomDropdown(inp); inp.focus(); }
+        }
+    });
+
+    // Search input
+    var searchInp = searchDiv.querySelector('input');
+    searchInp.addEventListener('input', function() { filterCustomDropdown(this); });
+    searchInp.addEventListener('click', function(e) { e.stopPropagation(); });
+
+    syncDropdownFromSelect(wrapper, selectEl);
+}
+
+function syncDropdownFromSelect(wrapper, selectEl) {
+    var list = wrapper.querySelector('.custom-multiselect-list');
+    list.innerHTML = '';
+    Array.from(selectEl.options).forEach(function(opt) {
+        var item = document.createElement('div');
+        item.className = 'custom-multiselect-option' + (opt.selected ? ' selected' : '');
+        item.dataset.value = opt.value;
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = opt.selected;
+        var label = document.createElement('span');
+        label.className = 'option-label';
+        label.textContent = opt.textContent;
+        item.appendChild(cb);
+        item.appendChild(label);
+        item.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var newChecked = !cb.checked;
+            cb.checked = newChecked;
+            item.classList.toggle('selected', newChecked);
+            var optEl = Array.from(selectEl.options).find(function(o) { return o.value === opt.value; });
+            if (optEl) optEl.selected = newChecked;
+            updateTriggerLabel(wrapper, selectEl);
+            selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        list.appendChild(item);
+    });
+    updateTriggerLabel(wrapper, selectEl);
+}
+
+function updateTriggerLabel(wrapper, selectEl) {
+    var selected = Array.from(selectEl.selectedOptions).filter(function(o) { return o.value !== ''; });
+    var labelSpan = wrapper.querySelector('.trigger-label');
+    if (selected.length === 0) {
+        labelSpan.innerHTML = 'Todos';
+        labelSpan.classList.remove('has-value');
+    } else if (selected.length === 1) {
+        labelSpan.textContent = selected[0].textContent;
+        labelSpan.classList.add('has-value');
+    } else {
+        labelSpan.innerHTML = 'Selecionados <span class="badge">' + selected.length + '</span>';
+        labelSpan.classList.add('has-value');
+    }
+}
+
+function filterCustomDropdown(input) {
+    var wrapper = input.closest('.custom-multiselect');
+    var query = input.value.toLowerCase();
+    wrapper.querySelectorAll('.custom-multiselect-option').forEach(function(item) {
+        var text = item.querySelector('.option-label').textContent.toLowerCase();
+        item.style.display = text.includes(query) ? '' : 'none';
+    });
+}
+
+document.addEventListener('click', function() {
+    document.querySelectorAll('.custom-multiselect.open').forEach(function(el) { el.classList.remove('open'); });
+});
+
+function initCustomDropdowns() {
+    document.querySelectorAll('.filter-group select[multiple]').forEach(function(sel) {
+        if (!sel.closest('.custom-multiselect')) {
+            buildCustomDropdown(sel);
+        }
+    });
+}
+
+initCustomDropdowns();
 
         
     </script>
