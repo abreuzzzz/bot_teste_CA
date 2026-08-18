@@ -1452,34 +1452,40 @@ body.sidebar-collapsed .main-content {
 .vg-panel::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,#FFD700,#FFA500); }
 .vg-panel-title { font-size:1em; font-weight:700; color:#e2e8f0; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
 .vg-trio { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-.vg-trio-item { background:rgba(255,255,255,0.04); border-radius:10px; padding:12px 8px; text-align:center; border:1px solid rgba(255,255,255,0.07); }
+.vg-trio-item { background:rgba(255,215,0,0.06); border-radius:10px; padding:12px 8px; text-align:center; border:1px solid rgba(255,215,0,0.15); }
 .vg-trio-label { display:block; font-size:0.68em; color:#64748b; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:6px; font-weight:600; line-height:1.3; }
-.vg-trio-value { display:block; font-size:0.88em; font-weight:700; margin-bottom:6px; }
-.vg-trio-value.red { color:#f87171; } .vg-trio-value.gold { color:#FFD700; } .vg-trio-value.green { color:#4ade80; }
+.vg-trio-value { display:block; font-size:1.1em; font-weight:700; color:#FFD700; margin-bottom:4px; letter-spacing:-0.3px; }
+.vg-spark { height:30px; margin-top:6px; }
+/* remove old color overrides - all values are gold */
 .vg-geracao-row { display:flex; gap:16px; align-items:flex-start; }
 .vg-geracao-kpis { display:flex; flex-direction:column; gap:10px; min-width:150px; }
 .vg-geracao-item { background:rgba(255,255,255,0.04); border-radius:8px; padding:10px 12px; }
 .vg-geracao-label { font-size:0.7em; color:#64748b; text-transform:uppercase; font-weight:600; }
-.vg-geracao-value { font-size:1em; font-weight:700; color:#FFD700; margin-top:2px; }
+.vg-geracao-value { font-size:1.1em; font-weight:700; color:#FFD700; margin-top:2px; }
 /* KPI bar row */
 .vg-kpi-bar {
     display:grid; grid-template-columns:repeat(4,1fr);
-    background:rgba(255,215,0,0.1); border:1px solid rgba(255,215,0,0.22);
+    background: linear-gradient(135deg, rgba(255,215,0,0.18) 0%, rgba(255,165,0,0.12) 100%);
+    border:1px solid rgba(255,215,0,0.35);
     border-radius:14px; overflow:hidden; margin-bottom:16px;
+    box-shadow: 0 4px 20px rgba(255,215,0,0.1);
 }
 .vg-kpi-bar-item { padding:14px 18px; border-right:1px solid rgba(255,215,0,0.12); text-align:center; }
 .vg-kpi-bar-item:last-child { border-right:none; }
-.vg-kpi-bar-label { display:block; font-size:0.72em; color:#FFD700; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:5px; font-weight:600; }
-.vg-kpi-bar-value { font-size:1.15em; font-weight:700; color:#ffffff; }
+.vg-kpi-bar-label { display:block; font-size:0.72em; color:#FFD700; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:5px; font-weight:600; opacity:0.8; }
+.vg-kpi-bar-value { font-size:1.25em; font-weight:700; color:#ffffff; }
 /* KPI row cards */
 .vg-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
 .vg-kpi-card {
-    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
+    background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.04) 100%);
+    border:1px solid rgba(255,255,255,0.12);
     border-radius:12px; padding:14px 16px; position:relative;
     min-height:76px; display:flex; flex-direction:column; justify-content:center;
+    transition: border-color 0.3s;
 }
+.vg-kpi-card:hover { border-color: rgba(255,215,0,0.3); }
 .vg-kpi-label { font-size:0.7em; color:#64748b; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:5px; font-weight:600; }
-.vg-kpi-value { font-size:1.2em; font-weight:700; color:#e2e8f0; }
+.vg-kpi-value { font-size:1.25em; font-weight:700; color:#FFD700; }
 .vg-kpi-trend { position:absolute; right:14px; top:14px; font-size:1.2em; opacity:0.75; }
 .vg-kpi-trend.up { color:#4ade80; } .vg-kpi-trend.down { color:#f87171; }
 /* EBITDA ring */
@@ -1491,8 +1497,8 @@ body.sidebar-collapsed .main-content {
 .vg-ebitda-pct { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:0.82em; font-weight:700; color:#FFD700; white-space:nowrap; }
 /* Small KPI row */
 .vg-small-kpi { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; position:relative; }
-.vg-small-label { font-size:0.72em; color:#64748b; text-transform:uppercase; letter-spacing:0.3px; font-weight:600; }
-.vg-small-value { font-size:1.45em; font-weight:700; color:#e2e8f0; margin-top:2px; }
+.vg-small-label { font-size:0.72em; color:#94a3b8; text-transform:uppercase; letter-spacing:0.3px; font-weight:600; }
+.vg-small-value { font-size:1.8em; font-weight:700; color:#ffffff; margin-top:2px; }
 .vg-small-icon { position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:1.3em; color:rgba(255,215,0,0.45); }
 /* Runway bar */
 .vg-runway-bar { height:5px; background:rgba(255,255,255,0.1); border-radius:3px; margin-top:8px; overflow:hidden; }
@@ -1866,15 +1872,18 @@ body.sidebar-collapsed .main-content {
                                 <div class="vg-trio">
                                     <div class="vg-trio-item">
                                         <span class="vg-trio-label">Vencidos</span>
-                                        <span class="vg-trio-value red" id="receitaVencidos">R$ 0,00</span>
+                                        <span class="vg-trio-value" id="receitaVencidos">R$ 0,00</span>
+                                        <div class="vg-spark" id="sparkRecVenc"></div>
                                     </div>
                                     <div class="vg-trio-item">
                                         <span class="vg-trio-label">Vencem hoje</span>
-                                        <span class="vg-trio-value gold" id="receitaVenceHoje">R$ 0,00</span>
+                                        <span class="vg-trio-value" id="receitaVenceHoje">R$ 0,00</span>
+                                        <div class="vg-spark" id="sparkRecHoje"></div>
                                     </div>
                                     <div class="vg-trio-item">
                                         <span class="vg-trio-label">Vencem até o final do mês</span>
-                                        <span class="vg-trio-value green" id="receitaVenceMes">R$ 0,00</span>
+                                        <span class="vg-trio-value" id="receitaVenceMes">R$ 0,00</span>
+                                        <div class="vg-spark" id="sparkRecMes"></div>
                                     </div>
                                 </div>
                             </div>
@@ -1883,15 +1892,18 @@ body.sidebar-collapsed .main-content {
                                 <div class="vg-trio">
                                     <div class="vg-trio-item">
                                         <span class="vg-trio-label">Vencidos</span>
-                                        <span class="vg-trio-value red" id="despesaVencidos">R$ 0,00</span>
+                                        <span class="vg-trio-value" id="despesaVencidos">R$ 0,00</span>
+                                        <div class="vg-spark" id="sparkDespVenc"></div>
                                     </div>
                                     <div class="vg-trio-item">
                                         <span class="vg-trio-label">Vencem hoje</span>
-                                        <span class="vg-trio-value gold" id="despesaVenceHoje">R$ 0,00</span>
+                                        <span class="vg-trio-value" id="despesaVenceHoje">R$ 0,00</span>
+                                        <div class="vg-spark" id="sparkDespHoje"></div>
                                     </div>
                                     <div class="vg-trio-item">
                                         <span class="vg-trio-label">Vencem até o final do mês</span>
-                                        <span class="vg-trio-value green" id="despesaVenceMes">R$ 0,00</span>
+                                        <span class="vg-trio-value" id="despesaVenceMes">R$ 0,00</span>
+                                        <div class="vg-spark" id="sparkDespMes"></div>
                                     </div>
                                 </div>
                             </div>
@@ -3785,6 +3797,7 @@ function getYearMonthFromDate(dateStr) {
             createFluxosDistribuicaoChart(filteredData);
             createGeracaoCaixaChart();
             createTop5CategoriasChart(filteredData);
+            buildVGSparklines();
         }
         
         function updateReceitaPage() {
@@ -4344,7 +4357,39 @@ function getYearMonthFromDate(dateStr) {
             }).format(value);
         }
 
-        function createGeracaoCaixaChart() {
+        function createSVGSparkline(containerId, values, color) {
+    var el = document.getElementById(containerId);
+    if (!el || !values || !values.length) return;
+    var max = Math.max.apply(null, values.concat([1]));
+    var w = 60, h = 28, n = values.length;
+    var bw = Math.max(2, w / n - 1.5);
+    var rects = values.map(function(v, i) {
+        var bh = Math.max(3, (v / max) * h);
+        return '<rect x="' + (i * (w / n)) + '" y="' + (h - bh) + '" width="' + bw + '" height="' + bh + '" fill="' + color + '" rx="1" opacity="0.8"/>';
+    }).join('');
+    el.innerHTML = '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;height:' + h + 'px;display:block">' + rects + '</svg>';
+}
+
+function buildVGSparklines() {
+    var recByMonth = {}, despByMonth = {};
+    rawData.forEach(function(r) {
+        var mk = getYearMonthFromDate(r.dueDate);
+        if (!mk) return;
+        if (r.tipo === 'Receita') recByMonth[mk] = (recByMonth[mk] || 0) + (r.total || 0);
+        else if (r.tipo === 'Despesa') despByMonth[mk] = (despByMonth[mk] || 0) + (r.total || 0);
+    });
+    var recVals = Object.keys(recByMonth).sort().slice(-7).map(function(k) { return recByMonth[k]; });
+    var despVals = Object.keys(despByMonth).sort().slice(-7).map(function(k) { return despByMonth[k]; });
+    var gold = '#FFD700', amber = '#FFA500';
+    createSVGSparkline('sparkRecVenc', recVals, gold);
+    createSVGSparkline('sparkRecHoje', recVals, gold);
+    createSVGSparkline('sparkRecMes', recVals, gold);
+    createSVGSparkline('sparkDespVenc', despVals, amber);
+    createSVGSparkline('sparkDespHoje', despVals, amber);
+    createSVGSparkline('sparkDespMes', despVals, amber);
+}
+
+function createGeracaoCaixaChart() {
     // Last 12 months net cash flow from rawData
     const monthly = {};
     rawData.forEach(r => {
