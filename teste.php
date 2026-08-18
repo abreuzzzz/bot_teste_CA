@@ -191,9 +191,11 @@ $GOOGLE_SHEETS_FILE_ID_Bluefields = getenv('GOOGLE_SHEETS_FILE_ID_Bluefields');
     }
     
     .sidebar-menu a .icon {
-        font-size: 1.2em;
-        width: 20px;
+        font-size: 1.15em;
+        width: 22px;
         text-align: center;
+        flex-shrink: 0;
+        line-height: 1;
     }
     
     /* Main Content */
@@ -1429,10 +1431,56 @@ body.sidebar-collapsed .main-content {
     width: calc(100vw - 64px);
 }
 
-/* Emoji grayscale - monochrome */
+/* FA icons in sidebar - outline/regular style */
 .sidebar-menu .icon {
-    filter: grayscale(100%);
+    flex-shrink: 0;
 }
+.sidebar.collapsed .sidebar-menu a:hover {
+    transform: none !important;
+}
+
+/* ===== VISÃO GERAL - Summary Cards ===== */
+.vg-summary-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+.vg-mini-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 16px;
+}
+.vg-mini-kpi {
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    padding: 12px 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    text-align: center;
+    transition: border-color 0.3s;
+}
+.vg-mini-kpi:hover { border-color: rgba(255,215,0,0.3); }
+.vg-mini-label {
+    display: block;
+    font-size: 0.72em;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+.vg-mini-value {
+    display: block;
+    font-size: 0.92em;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-top: 2px;
+}
+.vg-mini-kpi.vg-overdue .vg-mini-value { color: #f87171; }
+.vg-mini-kpi.vg-today .vg-mini-value   { color: #FFD700; }
+.vg-mini-kpi.vg-month .vg-mini-value   { color: #4ade80; }
+@media (max-width: 900px) { .vg-summary-row { grid-template-columns: 1fr; } }
 
 /* ===== FULLSCREEN BUTTON ===== */
 .fullscreen-btn {
@@ -1630,75 +1678,64 @@ body.sidebar-collapsed .main-content {
             <ul class="sidebar-menu">
                 <li>
                     <a href="#visao-geral" class="menu-link active" onclick="showPage('visao-geral', event)">
-                        <span class="icon">📊</span>
+                        <i class="fa-regular fa-house icon"></i>
                         <span>Visão Geral</span>
                     </a>
                 </li>
                 <li>
                     <a href="#receita" class="menu-link" onclick="showPage('receita', event)">
-                        <span class="icon">💰</span>
+                        <i class="fa-regular fa-file-invoice-dollar icon"></i>
                         <span>Contas a Receber</span>
                     </a>
                 </li>
                 <li>
                     <a href="#despesa" class="menu-link" onclick="showPage('despesa', event)">
-                        <span class="icon">💸</span>
+                        <i class="fa-regular fa-file-invoice icon"></i>
                         <span>Contas a Pagar</span>
                     </a>
                 </li>
                 <li>
                     <a href="#fluxo-caixa" class="menu-link" onclick="showPage('fluxo-caixa', event)">
-                        <span class="icon">💵</span>
+                        <i class="fa-regular fa-money-bill-transfer icon"></i>
                         <span>Fluxo de Caixa</span>
                     </a>
                 </li>
                 <li>
                     <a href="#centro-custo" class="menu-link" onclick="showPage('centro-custo', event)">
-                        <span class="icon">🏢</span>
+                        <i class="fa-regular fa-building icon"></i>
                         <span>Centro de Custo</span>
                     </a>
                 </li>
                 <li>
                     <a href="#indicadores" class="menu-link" onclick="showPage('indicadores', event)">
-                        <span class="icon">📈</span>
+                        <i class="fa-regular fa-chart-line icon"></i>
                         <span>Indicadores</span>
                     </a>
                 </li>
-                
                 <li>
-    <a href="#rentabilidade" class="menu-link" onclick="showPage('rentabilidade', event)">
-        <span class="icon">💎</span>
-        <span>Análise de Rentabilidade</span>
-    </a>
-</li>
-
+                    <a href="#rentabilidade" class="menu-link" onclick="showPage('rentabilidade', event)">
+                        <i class="fa-regular fa-chart-mixed icon"></i>
+                        <span>Análise de Rentabilidade</span>
+                    </a>
+                </li>
                 <li>
                     <a href="#dre" class="menu-link" onclick="showPage('dre', event)">
-                        <span class="icon">📋</span>
+                        <i class="fa-regular fa-file-spreadsheet icon"></i>
                         <span>DRE</span>
                     </a>
                 </li>
-                <!--// <li>
-                   // <a href="#simulador" class="menu-link" onclick="showPage('simulador', event)">
-                   //     <span class="icon">🎯</span>
-                       // <span>Simulador DRE</span>
-                   // </a>
-             //  </li> -->
                 <li>
-  <a href="#simulador-fluxo" class="menu-link" onclick="showPage('simulador-fluxo', event)">
-    <span class="icon">💰</span>
-    <span>Simulador Fluxo de Caixa</span>
-  </a>
-</li>
-
-<li>
-  <a href="#exportar-png" class="menu-link" onclick="exportCurrentPageToPNG(event)">
-    <span class="icon">🖼️</span>
-    <span>Exportar como Imagem</span>
-  </a>
-</li>
-
-
+                    <a href="#simulador-fluxo" class="menu-link" onclick="showPage('simulador-fluxo', event)">
+                        <i class="fa-regular fa-calculator icon"></i>
+                        <span>Simulador Fluxo de Caixa</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#exportar-png" class="menu-link" onclick="exportCurrentPageToPNG(event)">
+                        <i class="fa-regular fa-file-arrow-down icon"></i>
+                        <span>Exportar como Imagem</span>
+                    </a>
+                </li>
             </ul>
         </aside>
         
@@ -1789,37 +1826,89 @@ body.sidebar-collapsed .main-content {
                     <div id="error" class="error" style="display:none;"></div>
                     
                     <div id="dashboard" style="display:none;">
+
+                        <!-- Resumo: Contas a Receber / Contas a Pagar -->
+                        <div class="vg-summary-row">
+                            <div class="chart" style="margin-bottom:0;">
+                                <h2 style="display:flex;align-items:center;gap:10px;">
+                                    <i class="fa-regular fa-file-invoice-dollar" style="color:#4ade80;"></i>
+                                    Contas a Receber
+                                </h2>
+                                <div class="vg-mini-kpis">
+                                    <div class="vg-mini-kpi vg-overdue">
+                                        <span class="vg-mini-label">Vencidos</span>
+                                        <span class="vg-mini-value" id="receitaVencidos">R$ 0,00</span>
+                                    </div>
+                                    <div class="vg-mini-kpi vg-today">
+                                        <span class="vg-mini-label">Vencem Hoje</span>
+                                        <span class="vg-mini-value" id="receitaVenceHoje">R$ 0,00</span>
+                                    </div>
+                                    <div class="vg-mini-kpi vg-month">
+                                        <span class="vg-mini-label">Vencem no Mês</span>
+                                        <span class="vg-mini-value" id="receitaVenceMes">R$ 0,00</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chart" style="margin-bottom:0;">
+                                <h2 style="display:flex;align-items:center;gap:10px;">
+                                    <i class="fa-regular fa-file-invoice" style="color:#f87171;"></i>
+                                    Contas a Pagar
+                                </h2>
+                                <div class="vg-mini-kpis">
+                                    <div class="vg-mini-kpi vg-overdue">
+                                        <span class="vg-mini-label">Vencidos</span>
+                                        <span class="vg-mini-value" id="despesaVencidos">R$ 0,00</span>
+                                    </div>
+                                    <div class="vg-mini-kpi vg-today">
+                                        <span class="vg-mini-label">Vencem Hoje</span>
+                                        <span class="vg-mini-value" id="despesaVenceHoje">R$ 0,00</span>
+                                    </div>
+                                    <div class="vg-mini-kpi vg-month">
+                                        <span class="vg-mini-label">Vencem no Mês</span>
+                                        <span class="vg-mini-value" id="despesaVenceMes">R$ 0,00</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- KPIs principais -->
                         <div class="kpis">
                             <div class="kpi-card positive">
-                                <h3>💰 Receber Total</h3>
+                                <h3>Receita Total</h3>
                                 <div class="value" id="receitaTotal">R$ 0,00</div>
                             </div>
-                            
                             <div class="kpi-card negative">
-                                <h3>💸 Pagar Total</h3>
+                                <h3>Pagar Total</h3>
                                 <div class="value" id="despesaTotal">R$ 0,00</div>
                             </div>
-                            
                             <div class="kpi-card" id="resultadoCard">
-                                <h3>📈 Total do Período</h3>
+                                <h3>Total do Período</h3>
                                 <div class="value" id="resultadoLiquido">R$ 0,00</div>
                             </div>
-                            
                             <div class="kpi-card">
-                                <h3>📊 Taxa da Margem</h3>
+                                <h3>Taxa da Margem</h3>
                                 <div class="value" id="taxaMargem">0%</div>
                             </div>
                         </div>
-                        
-                        <div class="chart">
-                            <h2>Receber e a Pagar</h2>
-                            <div id="chartReceitasDespesas"></div>
+
+                        <!-- Gráficos: bar chart + donut -->
+                        <div class="charts-row">
+                            <div class="chart">
+                                <h2>Receitas e Despesas</h2>
+                                <div id="chartReceitasDespesas"></div>
+                            </div>
+                            <div class="chart">
+                                <h2>Distribuição do Fluxo de Caixa</h2>
+                                <div id="chartFluxosDistribuicao"></div>
+                            </div>
                         </div>
-                        
+
+                        <!-- Linha do período -->
                         <div class="chart">
                             <h2>Total do Período</h2>
                             <div id="chartValorLiquido"></div>
                         </div>
+
                     </div>
                 </section>
                 
@@ -3397,35 +3486,62 @@ function getYearMonthFromDate(dateStr) {
         
         function updateDashboard() {
             const filteredData = getFilteredData();
-            
-            let receita = 0;
-            let despesa = 0;
-            
+
+            let receita = 0, despesa = 0;
+            let receitaVencidos = 0, receitaVenceHoje = 0, receitaVenceMes = 0;
+            let despesaVencidos = 0, despesaVenceHoje = 0, despesaVenceMes = 0;
+
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+            const currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+
             filteredData.forEach(row => {
+                const amt = row.total || 0;
+                const dueRaw = row.dueDate || '';
+                const dueShort = dueRaw.includes('T') ? dueRaw.split('T')[0] : dueRaw;
+                const dueMon = getYearMonthFromDate(dueRaw) || '';
+
                 if (row.tipo === 'Receita') {
-                    receita += row.total;
+                    receita += amt;
+                    if (row.status === 'OVERDUE') receitaVencidos += amt;
+                    if (dueShort === todayStr) receitaVenceHoje += amt;
+                    if (dueMon === currentMonth && (row.status === 'PENDING' || row.status === 'PARTIAL')) receitaVenceMes += amt;
                 } else if (row.tipo === 'Despesa') {
-                    despesa += row.total;
+                    despesa += amt;
+                    if (row.status === 'OVERDUE') despesaVencidos += amt;
+                    if (dueShort === todayStr) despesaVenceHoje += amt;
+                    if (dueMon === currentMonth && (row.status === 'PENDING' || row.status === 'PARTIAL')) despesaVenceMes += amt;
                 }
             });
-            
+
             const resultado = receita - despesa;
             const margem = receita > 0 ? ((receita - despesa) / receita) * 100 : 0;
-            
+
+            // KPIs principais
             document.getElementById('receitaTotal').textContent = formatCurrency(receita);
             document.getElementById('despesaTotal').textContent = formatCurrency(despesa);
             document.getElementById('resultadoLiquido').textContent = formatCurrency(resultado);
             document.getElementById('taxaMargem').textContent = margem.toFixed(2) + '%';
-            
+
+            // Summary cards
+            const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = formatCurrency(v); };
+            setText('receitaVencidos', receitaVencidos);
+            setText('receitaVenceHoje', receitaVenceHoje);
+            setText('receitaVenceMes', receitaVenceMes);
+            setText('despesaVencidos', despesaVencidos);
+            setText('despesaVenceHoje', despesaVenceHoje);
+            setText('despesaVenceMes', despesaVenceMes);
+
             const resultadoCard = document.getElementById('resultadoCard');
             if (resultado >= 0) {
                 resultadoCard.className = 'kpi-card positive';
             } else {
                 resultadoCard.className = 'kpi-card negative';
             }
-            
+
             createRevenueExpenseChart(filteredData);
             createNetValueChart(filteredData);
+            createFluxosDistribuicaoChart(filteredData);
         }
         
         function updateReceitaPage() {
@@ -3983,6 +4099,39 @@ function getYearMonthFromDate(dateStr) {
                 style: 'currency',
                 currency: 'BRL'
             }).format(value);
+        }
+
+        function createFluxosDistribuicaoChart(data) {
+            var fco = 0, fcf = 0, fci = 0;
+            data.forEach(function(row) {
+                if (row.tipo !== 'Despesa') return;
+                var cat = row['categoriesRatio.category'] || '';
+                var m = cat.match(/^(\d+\.\d+)/);
+                var tipo = m ? (dreFluxoMapping[m[1]] || 'FCO') : 'FCO';
+                if (tipo === 'FCO') fco += (row.total || 0);
+                else if (tipo === 'FCF') fcf += (row.total || 0);
+                else if (tipo === 'FCI') fci += (row.total || 0);
+            });
+            var total = fco + fcf + fci;
+            if (total === 0) { fco = 1; fcf = 1; fci = 1; } // placeholder when no data
+            Plotly.newPlot('chartFluxosDistribuicao', [{
+                values: [fco, fcf, fci],
+                labels: ['Operacional', 'Financeiro', 'Investimento'],
+                type: 'pie',
+                hole: 0.52,
+                marker: { colors: ['#FFD700', '#4facfe', '#f5576c'] },
+                textinfo: 'percent',
+                textfont: { color: '#ffffff', size: 13 },
+                hovertemplate: '<b>%{label}</b><br>%{percent}<br>R$ %{value:,.2f}<extra></extra>'
+            }], {
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                showlegend: true,
+                legend: { font: { color: '#cbd5e1', size: 12 }, orientation: 'v', x: 1.05, y: 0.5 },
+                margin: { t: 10, b: 10, l: 10, r: 100 },
+                font: { color: '#cbd5e1' },
+                hoverlabel: { bgcolor: 'rgba(15,15,35,0.95)', bordercolor: 'rgba(255,215,0,0.5)', font: { color: '#fff', size: 13 } }
+            }, { responsive: true });
         }
         
         // Event Listeners - Visão Geral
