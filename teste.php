@@ -1439,48 +1439,80 @@ body.sidebar-collapsed .main-content {
     transform: none !important;
 }
 
-/* ===== VISÃO GERAL - Summary Cards ===== */
-.vg-summary-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    margin-bottom: 20px;
+/* ===== VISÃO GERAL - Mockup Layout ===== */
+.vg-2col { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+.vg-panel {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius:16px; padding:18px 20px;
+    position:relative; overflow:hidden;
+    backdrop-filter:blur(20px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
 }
-.vg-mini-kpis {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-top: 16px;
+.vg-panel::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,#FFD700,#FFA500); }
+.vg-panel-title { font-size:1em; font-weight:700; color:#e2e8f0; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+.vg-trio { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.vg-trio-item { background:rgba(255,255,255,0.04); border-radius:10px; padding:12px 8px; text-align:center; border:1px solid rgba(255,255,255,0.07); }
+.vg-trio-label { display:block; font-size:0.68em; color:#64748b; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:6px; font-weight:600; line-height:1.3; }
+.vg-trio-value { display:block; font-size:0.88em; font-weight:700; margin-bottom:6px; }
+.vg-trio-value.red { color:#f87171; } .vg-trio-value.gold { color:#FFD700; } .vg-trio-value.green { color:#4ade80; }
+.vg-geracao-row { display:flex; gap:16px; align-items:flex-start; }
+.vg-geracao-kpis { display:flex; flex-direction:column; gap:10px; min-width:150px; }
+.vg-geracao-item { background:rgba(255,255,255,0.04); border-radius:8px; padding:10px 12px; }
+.vg-geracao-label { font-size:0.7em; color:#64748b; text-transform:uppercase; font-weight:600; }
+.vg-geracao-value { font-size:1em; font-weight:700; color:#FFD700; margin-top:2px; }
+/* KPI bar row */
+.vg-kpi-bar {
+    display:grid; grid-template-columns:repeat(4,1fr);
+    background:rgba(255,215,0,0.1); border:1px solid rgba(255,215,0,0.22);
+    border-radius:14px; overflow:hidden; margin-bottom:16px;
 }
-.vg-mini-kpi {
-    background: rgba(255,255,255,0.04);
-    border-radius: 10px;
-    padding: 12px 8px;
-    border: 1px solid rgba(255,255,255,0.08);
-    text-align: center;
-    transition: border-color 0.3s;
+.vg-kpi-bar-item { padding:14px 18px; border-right:1px solid rgba(255,215,0,0.12); text-align:center; }
+.vg-kpi-bar-item:last-child { border-right:none; }
+.vg-kpi-bar-label { display:block; font-size:0.72em; color:#FFD700; text-transform:uppercase; letter-spacing:0.4px; margin-bottom:5px; font-weight:600; }
+.vg-kpi-bar-value { font-size:1.15em; font-weight:700; color:#ffffff; }
+/* KPI row cards */
+.vg-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+.vg-kpi-card {
+    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
+    border-radius:12px; padding:14px 16px; position:relative;
+    min-height:76px; display:flex; flex-direction:column; justify-content:center;
 }
-.vg-mini-kpi:hover { border-color: rgba(255,215,0,0.3); }
-.vg-mini-label {
-    display: block;
-    font-size: 0.72em;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 6px;
-    font-weight: 600;
+.vg-kpi-label { font-size:0.7em; color:#64748b; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:5px; font-weight:600; }
+.vg-kpi-value { font-size:1.2em; font-weight:700; color:#e2e8f0; }
+.vg-kpi-trend { position:absolute; right:14px; top:14px; font-size:1.2em; opacity:0.75; }
+.vg-kpi-trend.up { color:#4ade80; } .vg-kpi-trend.down { color:#f87171; }
+/* EBITDA ring */
+.vg-ebitda-center { display:flex; align-items:center; justify-content:center; padding:4px 0; }
+.vg-ebitda-ring { position:relative; width:64px; height:64px; flex-shrink:0; }
+.vg-ebitda-ring svg { transform:rotate(-90deg); }
+.vg-ring-bg { stroke:rgba(255,255,255,0.1); fill:none; stroke-width:5; }
+.vg-ring-fill { stroke:#FFD700; fill:none; stroke-width:5; stroke-linecap:round; transition:stroke-dashoffset 0.6s ease; }
+.vg-ebitda-pct { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:0.82em; font-weight:700; color:#FFD700; white-space:nowrap; }
+/* Small KPI row */
+.vg-small-kpi { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; position:relative; }
+.vg-small-label { font-size:0.72em; color:#64748b; text-transform:uppercase; letter-spacing:0.3px; font-weight:600; }
+.vg-small-value { font-size:1.45em; font-weight:700; color:#e2e8f0; margin-top:2px; }
+.vg-small-icon { position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:1.3em; color:rgba(255,215,0,0.45); }
+/* Runway bar */
+.vg-runway-bar { height:5px; background:rgba(255,255,255,0.1); border-radius:3px; margin-top:8px; overflow:hidden; }
+.vg-runway-fill { height:100%; background:linear-gradient(90deg,#FFD700,#FFA500); border-radius:3px; transition:width 0.5s ease; }
+/* Bottom row */
+.vg-row-bottom { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px; }
+/* Retirada */
+.vg-retirada-value { font-size:2.1em; font-weight:700; color:#FFD700; margin:8px 0; }
+.vg-retirada-max-val { font-size:1.05em; font-weight:700; color:#e2e8f0; margin-top:4px; }
+.vg-slider-labels { display:flex; justify-content:space-between; font-size:0.72em; color:#64748b; margin-top:3px; }
+/* Separator */
+.vg-section-sep { border:none; border-top:1px solid rgba(255,255,255,0.07); margin:6px 0 16px; }
+/* Responsive */
+@media (max-width:1100px) {
+    .vg-kpi-bar,.vg-kpi-row { grid-template-columns:repeat(2,1fr); }
+    .vg-2col,.vg-row-bottom { grid-template-columns:1fr; }
 }
-.vg-mini-value {
-    display: block;
-    font-size: 0.92em;
-    font-weight: 700;
-    color: #e2e8f0;
-    margin-top: 2px;
+@media (max-width:600px) {
+    .vg-kpi-bar,.vg-kpi-row { grid-template-columns:1fr 1fr; }
 }
-.vg-mini-kpi.vg-overdue .vg-mini-value { color: #f87171; }
-.vg-mini-kpi.vg-today .vg-mini-value   { color: #FFD700; }
-.vg-mini-kpi.vg-month .vg-mini-value   { color: #4ade80; }
-@media (max-width: 900px) { .vg-summary-row { grid-template-columns: 1fr; } }
 
 /* ===== FULLSCREEN BUTTON ===== */
 .fullscreen-btn {
@@ -1678,61 +1710,61 @@ body.sidebar-collapsed .main-content {
             <ul class="sidebar-menu">
                 <li>
                     <a href="#visao-geral" class="menu-link active" onclick="showPage('visao-geral', event)">
-                        <i class="fa-regular fa-house icon"></i>
+                        <i class="fas fa-home icon"></i>
                         <span>Visão Geral</span>
                     </a>
                 </li>
                 <li>
                     <a href="#receita" class="menu-link" onclick="showPage('receita', event)">
-                        <i class="fa-regular fa-file-invoice-dollar icon"></i>
+                        <i class="fas fa-file-invoice-dollar icon"></i>
                         <span>Contas a Receber</span>
                     </a>
                 </li>
                 <li>
                     <a href="#despesa" class="menu-link" onclick="showPage('despesa', event)">
-                        <i class="fa-regular fa-file-invoice icon"></i>
+                        <i class="fas fa-credit-card icon"></i>
                         <span>Contas a Pagar</span>
                     </a>
                 </li>
                 <li>
                     <a href="#fluxo-caixa" class="menu-link" onclick="showPage('fluxo-caixa', event)">
-                        <i class="fa-regular fa-money-bill-transfer icon"></i>
+                        <i class="fas fa-exchange-alt icon"></i>
                         <span>Fluxo de Caixa</span>
                     </a>
                 </li>
                 <li>
                     <a href="#centro-custo" class="menu-link" onclick="showPage('centro-custo', event)">
-                        <i class="fa-regular fa-building icon"></i>
+                        <i class="fas fa-building icon"></i>
                         <span>Centro de Custo</span>
                     </a>
                 </li>
                 <li>
                     <a href="#indicadores" class="menu-link" onclick="showPage('indicadores', event)">
-                        <i class="fa-regular fa-chart-line icon"></i>
+                        <i class="fas fa-chart-line icon"></i>
                         <span>Indicadores</span>
                     </a>
                 </li>
                 <li>
                     <a href="#rentabilidade" class="menu-link" onclick="showPage('rentabilidade', event)">
-                        <i class="fa-regular fa-chart-mixed icon"></i>
+                        <i class="fas fa-chart-pie icon"></i>
                         <span>Análise de Rentabilidade</span>
                     </a>
                 </li>
                 <li>
                     <a href="#dre" class="menu-link" onclick="showPage('dre', event)">
-                        <i class="fa-regular fa-file-spreadsheet icon"></i>
+                        <i class="fas fa-file-alt icon"></i>
                         <span>DRE</span>
                     </a>
                 </li>
                 <li>
                     <a href="#simulador-fluxo" class="menu-link" onclick="showPage('simulador-fluxo', event)">
-                        <i class="fa-regular fa-calculator icon"></i>
+                        <i class="fas fa-calculator icon"></i>
                         <span>Simulador Fluxo de Caixa</span>
                     </a>
                 </li>
                 <li>
                     <a href="#exportar-png" class="menu-link" onclick="exportCurrentPageToPNG(event)">
-                        <i class="fa-regular fa-file-arrow-down icon"></i>
+                        <i class="fas fa-download icon"></i>
                         <span>Exportar como Imagem</span>
                     </a>
                 </li>
@@ -1827,87 +1859,206 @@ body.sidebar-collapsed .main-content {
                     
                     <div id="dashboard" style="display:none;">
 
-                        <!-- Resumo: Contas a Receber / Contas a Pagar -->
-                        <div class="vg-summary-row">
-                            <div class="chart" style="margin-bottom:0;">
-                                <h2 style="display:flex;align-items:center;gap:10px;">
-                                    <i class="fa-regular fa-file-invoice-dollar" style="color:#4ade80;"></i>
-                                    Contas a Receber
-                                </h2>
-                                <div class="vg-mini-kpis">
-                                    <div class="vg-mini-kpi vg-overdue">
-                                        <span class="vg-mini-label">Vencidos</span>
-                                        <span class="vg-mini-value" id="receitaVencidos">R$ 0,00</span>
+                        <!-- Row 1: Contas a Receber / Pagar -->
+                        <div class="vg-2col">
+                            <div class="vg-panel">
+                                <div class="vg-panel-title"><i class="fas fa-file-invoice-dollar" style="color:#4ade80"></i> Contas a Receber</div>
+                                <div class="vg-trio">
+                                    <div class="vg-trio-item">
+                                        <span class="vg-trio-label">Vencidos</span>
+                                        <span class="vg-trio-value red" id="receitaVencidos">R$ 0,00</span>
                                     </div>
-                                    <div class="vg-mini-kpi vg-today">
-                                        <span class="vg-mini-label">Vencem Hoje</span>
-                                        <span class="vg-mini-value" id="receitaVenceHoje">R$ 0,00</span>
+                                    <div class="vg-trio-item">
+                                        <span class="vg-trio-label">Vencem hoje</span>
+                                        <span class="vg-trio-value gold" id="receitaVenceHoje">R$ 0,00</span>
                                     </div>
-                                    <div class="vg-mini-kpi vg-month">
-                                        <span class="vg-mini-label">Vencem no Mês</span>
-                                        <span class="vg-mini-value" id="receitaVenceMes">R$ 0,00</span>
+                                    <div class="vg-trio-item">
+                                        <span class="vg-trio-label">Vencem até o final do mês</span>
+                                        <span class="vg-trio-value green" id="receitaVenceMes">R$ 0,00</span>
                                     </div>
                                 </div>
                             </div>
-                            <div class="chart" style="margin-bottom:0;">
-                                <h2 style="display:flex;align-items:center;gap:10px;">
-                                    <i class="fa-regular fa-file-invoice" style="color:#f87171;"></i>
-                                    Contas a Pagar
-                                </h2>
-                                <div class="vg-mini-kpis">
-                                    <div class="vg-mini-kpi vg-overdue">
-                                        <span class="vg-mini-label">Vencidos</span>
-                                        <span class="vg-mini-value" id="despesaVencidos">R$ 0,00</span>
+                            <div class="vg-panel">
+                                <div class="vg-panel-title"><i class="fas fa-credit-card" style="color:#f87171"></i> Contas a Pagar</div>
+                                <div class="vg-trio">
+                                    <div class="vg-trio-item">
+                                        <span class="vg-trio-label">Vencidos</span>
+                                        <span class="vg-trio-value red" id="despesaVencidos">R$ 0,00</span>
                                     </div>
-                                    <div class="vg-mini-kpi vg-today">
-                                        <span class="vg-mini-label">Vencem Hoje</span>
-                                        <span class="vg-mini-value" id="despesaVenceHoje">R$ 0,00</span>
+                                    <div class="vg-trio-item">
+                                        <span class="vg-trio-label">Vencem hoje</span>
+                                        <span class="vg-trio-value gold" id="despesaVenceHoje">R$ 0,00</span>
                                     </div>
-                                    <div class="vg-mini-kpi vg-month">
-                                        <span class="vg-mini-label">Vencem no Mês</span>
-                                        <span class="vg-mini-value" id="despesaVenceMes">R$ 0,00</span>
+                                    <div class="vg-trio-item">
+                                        <span class="vg-trio-label">Vencem até o final do mês</span>
+                                        <span class="vg-trio-value green" id="despesaVenceMes">R$ 0,00</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- KPIs principais -->
-                        <div class="kpis">
-                            <div class="kpi-card positive">
-                                <h3>Receita Total</h3>
-                                <div class="value" id="receitaTotal">R$ 0,00</div>
+                        <!-- Row 2: Geração de Caixa + Fluxos de Caixa -->
+                        <div class="vg-2col">
+                            <div class="vg-panel">
+                                <div class="vg-panel-title"><i class="fas fa-chart-line" style="color:#FFD700"></i> Geração de Caixa</div>
+                                <div class="vg-geracao-row">
+                                    <div class="vg-geracao-kpis">
+                                        <div class="vg-geracao-item">
+                                            <div class="vg-geracao-label">Do dia</div>
+                                            <div class="vg-geracao-value" id="caixaDia">R$ 0,00</div>
+                                        </div>
+                                        <div class="vg-geracao-item">
+                                            <div class="vg-geracao-label">Da Semana</div>
+                                            <div class="vg-geracao-value" id="caixaSemana">R$ 0,00</div>
+                                        </div>
+                                        <div class="vg-geracao-item">
+                                            <div class="vg-geracao-label">Do Mês</div>
+                                            <div class="vg-geracao-value" id="caixaMes">R$ 0,00</div>
+                                        </div>
+                                    </div>
+                                    <div id="chartGeracaoCaixa" style="flex:1;min-height:130px;"></div>
+                                </div>
                             </div>
-                            <div class="kpi-card negative">
-                                <h3>Pagar Total</h3>
-                                <div class="value" id="despesaTotal">R$ 0,00</div>
-                            </div>
-                            <div class="kpi-card" id="resultadoCard">
-                                <h3>Total do Período</h3>
-                                <div class="value" id="resultadoLiquido">R$ 0,00</div>
-                            </div>
-                            <div class="kpi-card">
-                                <h3>Taxa da Margem</h3>
-                                <div class="value" id="taxaMargem">0%</div>
+                            <div class="vg-panel">
+                                <div class="vg-panel-title"><i class="fas fa-circle-notch" style="color:#FFD700"></i> Fluxos de Caixa</div>
+                                <div id="chartFluxosDistribuicao" style="min-height:160px;"></div>
                             </div>
                         </div>
 
-                        <!-- Gráficos: bar chart + donut -->
+                        <!-- Row 3: KPI bar (gold) -->
+                        <div class="vg-kpi-bar">
+                            <div class="vg-kpi-bar-item">
+                                <span class="vg-kpi-bar-label">Receita</span>
+                                <span class="vg-kpi-bar-value" id="receitaTotal">R$ 0,00</span>
+                            </div>
+                            <div class="vg-kpi-bar-item">
+                                <span class="vg-kpi-bar-label">Custo</span>
+                                <span class="vg-kpi-bar-value" id="despesaTotal">R$ 0,00</span>
+                            </div>
+                            <div class="vg-kpi-bar-item">
+                                <span class="vg-kpi-bar-label">Desp. Operacionais</span>
+                                <span class="vg-kpi-bar-value" id="despesaOpVG">R$ 0,00</span>
+                            </div>
+                            <div class="vg-kpi-bar-item">
+                                <span class="vg-kpi-bar-label">Desp. Não-Operacionais</span>
+                                <span class="vg-kpi-bar-value" id="despesaNaoOpVG">R$ 0,00</span>
+                            </div>
+                        </div>
+
+                        <!-- Row 4: Margem / EBITDA / Ponto Equilíbrio / Resultado -->
+                        <div class="vg-kpi-row">
+                            <div class="vg-kpi-card">
+                                <div class="vg-kpi-label">Margem Bruta</div>
+                                <div class="vg-kpi-value" id="margemBrutaVG">R$ 0,00</div>
+                                <i class="fas fa-arrow-up vg-kpi-trend up" id="margemTrendVG"></i>
+                            </div>
+                            <div class="vg-kpi-card">
+                                <div class="vg-kpi-label">EBITDA</div>
+                                <div class="vg-ebitda-center">
+                                    <div class="vg-ebitda-ring">
+                                        <svg viewBox="0 0 64 64" width="64" height="64">
+                                            <circle class="vg-ring-bg" cx="32" cy="32" r="26"/>
+                                            <circle class="vg-ring-fill" id="ebitdaRingFill" cx="32" cy="32" r="26"
+                                                stroke-dasharray="163.36" stroke-dashoffset="163.36"/>
+                                        </svg>
+                                        <span class="vg-ebitda-pct" id="ebitdaPercVG">0%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="vg-kpi-card">
+                                <div class="vg-kpi-label">Ponto de Equilíbrio</div>
+                                <div class="vg-kpi-value" id="pontoEquilibrioVG">R$ 0,00</div>
+                                <i class="fas fa-arrow-up vg-kpi-trend up"></i>
+                            </div>
+                            <div class="vg-kpi-card">
+                                <div class="vg-kpi-label">Resultado Líquido</div>
+                                <div class="vg-kpi-value" id="resultadoLiquido">R$ 0,00</div>
+                                <i class="fas fa-arrow-up vg-kpi-trend up" id="resultadoTrendVG"></i>
+                            </div>
+                        </div>
+
+                        <!-- Row 5: PMR / PMP / CF / WACC -->
+                        <div class="vg-kpi-row">
+                            <div class="vg-kpi-card vg-small-kpi">
+                                <div class="vg-small-label">PMR</div>
+                                <div class="vg-small-value" id="pmrVG">0</div>
+                                <i class="fas fa-clock vg-small-icon"></i>
+                            </div>
+                            <div class="vg-kpi-card vg-small-kpi">
+                                <div class="vg-small-label">PMP</div>
+                                <div class="vg-small-value" id="pmpVG">0</div>
+                                <i class="fas fa-clock vg-small-icon"></i>
+                            </div>
+                            <div class="vg-kpi-card vg-small-kpi">
+                                <div class="vg-small-label">CF</div>
+                                <div class="vg-small-value" id="cfVG">0</div>
+                                <i class="fas fa-dollar-sign vg-small-icon"></i>
+                            </div>
+                            <div class="vg-kpi-card vg-small-kpi">
+                                <div class="vg-small-label">WACC</div>
+                                <div class="vg-small-value" id="waccVG">0%</div>
+                                <i class="fas fa-percent vg-small-icon"></i>
+                            </div>
+                        </div>
+
+                        <!-- Row 6: Runway / FCL / Necessidade / Construção -->
+                        <div class="vg-kpi-row">
+                            <div class="vg-kpi-card">
+                                <div class="vg-kpi-label">Runway</div>
+                                <div class="vg-kpi-value" id="runwayVG">0</div>
+                                <div class="vg-runway-bar"><div class="vg-runway-fill" id="runwayBarVG" style="width:0%"></div></div>
+                            </div>
+                            <div class="vg-kpi-card">
+                                <div class="vg-kpi-label">Fluxo de Caixa Livre</div>
+                                <div class="vg-kpi-value" id="fclivreVG">R$ 0,00</div>
+                            </div>
+                            <div class="vg-kpi-card">
+                                <div class="vg-kpi-label">Necessidade de Caixa</div>
+                                <div class="vg-kpi-value" id="necessidadeVG">R$ 0,00</div>
+                            </div>
+                            <div class="vg-kpi-card">
+                                <div class="vg-kpi-label">Construção de Caixa Mensal</div>
+                                <div class="vg-kpi-value" id="construcaoVG">R$ 0,00</div>
+                            </div>
+                        </div>
+
+                        <!-- Row 7: 5 Categorias + Retirada -->
+                        <div class="vg-row-bottom">
+                            <div class="vg-panel">
+                                <div class="vg-panel-title">5 Categorias de Saídas x Faturamento</div>
+                                <div id="chartTop5Categorias" style="min-height:200px;"></div>
+                            </div>
+                            <div class="vg-panel">
+                                <div class="vg-panel-title">Retirada</div>
+                                <div style="font-size:0.75em;color:#64748b;text-transform:uppercase;font-weight:600;">Saldo da Retirada:</div>
+                                <div class="vg-retirada-value" id="retiradaVG">R$ 0,00</div>
+                                <input type="range" id="retiradaSlider" class="slider-input" min="0" value="0" style="margin:10px 0;">
+                                <div class="vg-slider-labels">
+                                    <span>0</span>
+                                    <span id="retiradaSliderLabel">R$ 0,00</span>
+                                    <span id="retiradaMaxLabel">R$ 0,00</span>
+                                </div>
+                                <div style="margin-top:14px;font-size:0.75em;color:#64748b;text-transform:uppercase;font-weight:600;">Máximo de retirada sugerido:</div>
+                                <div class="vg-retirada-max-val" id="retiradaMaxVG">R$ 0,00</div>
+                            </div>
+                        </div>
+
+                        <!-- Gráficos históricos (compat.) -->
+                        <hr class="vg-section-sep">
                         <div class="charts-row">
                             <div class="chart">
-                                <h2>Receitas e Despesas</h2>
+                                <h2>Receitas e Despesas por Mês</h2>
                                 <div id="chartReceitasDespesas"></div>
                             </div>
                             <div class="chart">
-                                <h2>Distribuição do Fluxo de Caixa</h2>
-                                <div id="chartFluxosDistribuicao"></div>
+                                <h2>Total do Período</h2>
+                                <div id="chartValorLiquido"></div>
                             </div>
                         </div>
 
-                        <!-- Linha do período -->
-                        <div class="chart">
-                            <h2>Total do Período</h2>
-                            <div id="chartValorLiquido"></div>
-                        </div>
+                        <!-- hidden KPIs compat -->
+                        <span id="taxaMargem" style="display:none"></span>
+                        <span id="resultadoCard" style="display:none"></span>
 
                     </div>
                 </section>
@@ -3487,61 +3638,153 @@ function getYearMonthFromDate(dateStr) {
         function updateDashboard() {
             const filteredData = getFilteredData();
 
-            let receita = 0, despesa = 0;
+            let receita = 0, despesa = 0, despesaOp = 0, despesaNaoOp = 0;
             let receitaVencidos = 0, receitaVenceHoje = 0, receitaVenceMes = 0;
             let despesaVencidos = 0, despesaVenceHoje = 0, despesaVenceMes = 0;
+            let recPend = 0, despPend = 0;
 
             const today = new Date();
             const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
             const currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
 
+            const monthsSet = new Set();
             filteredData.forEach(row => {
                 const amt = row.total || 0;
                 const dueRaw = row.dueDate || '';
                 const dueShort = dueRaw.includes('T') ? dueRaw.split('T')[0] : dueRaw;
                 const dueMon = getYearMonthFromDate(dueRaw) || '';
+                const d = getDateForRow(row, currentDateType);
+                const mon = getYearMonthFromDate(d);
+                if (mon) monthsSet.add(mon);
 
                 if (row.tipo === 'Receita') {
                     receita += amt;
                     if (row.status === 'OVERDUE') receitaVencidos += amt;
                     if (dueShort === todayStr) receitaVenceHoje += amt;
                     if (dueMon === currentMonth && (row.status === 'PENDING' || row.status === 'PARTIAL')) receitaVenceMes += amt;
+                    if (row.status === 'PENDING' || row.status === 'PARTIAL' || row.status === 'OVERDUE') recPend += amt;
                 } else if (row.tipo === 'Despesa') {
                     despesa += amt;
                     if (row.status === 'OVERDUE') despesaVencidos += amt;
                     if (dueShort === todayStr) despesaVenceHoje += amt;
                     if (dueMon === currentMonth && (row.status === 'PENDING' || row.status === 'PARTIAL')) despesaVenceMes += amt;
+                    if (row.status === 'PENDING' || row.status === 'PARTIAL' || row.status === 'OVERDUE') despPend += amt;
+                    // Op vs Non-Op classification
+                    const cat = row['categoriesRatio.category'] || '';
+                    const m2 = cat.match(/^(\d+\.\d+)/);
+                    const tipoFluxo = m2 ? (dreFluxoMapping[m2[1]] || 'FCO') : 'FCO';
+                    if (tipoFluxo === 'FCO') despesaOp += amt;
+                    else despesaNaoOp += amt;
                 }
             });
 
             const resultado = receita - despesa;
-            const margem = receita > 0 ? ((receita - despesa) / receita) * 100 : 0;
+            const margem = receita > 0 ? (resultado / receita * 100) : 0;
+            const numMonths = Math.max(1, monthsSet.size);
+            const avgRec = receita / numMonths;
+            const avgDesp = despesa / numMonths;
 
-            // KPIs principais
-            document.getElementById('receitaTotal').textContent = formatCurrency(receita);
-            document.getElementById('despesaTotal').textContent = formatCurrency(despesa);
-            document.getElementById('resultadoLiquido').textContent = formatCurrency(resultado);
-            document.getElementById('taxaMargem').textContent = margem.toFixed(2) + '%';
+            // EBITDA = (receita - despesaOp) / receita
+            const ebitdaVal = receita - despesaOp;
+            const ebitdaPerc = receita > 0 ? Math.round(ebitdaVal / receita * 100) : 0;
 
-            // Summary cards
-            const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = formatCurrency(v); };
-            setText('receitaVencidos', receitaVencidos);
-            setText('receitaVenceHoje', receitaVenceHoje);
-            setText('receitaVenceMes', receitaVenceMes);
-            setText('despesaVencidos', despesaVencidos);
-            setText('despesaVenceHoje', despesaVenceHoje);
-            setText('despesaVenceMes', despesaVenceMes);
+            // PMR / PMP (days)
+            const pmr = avgRec > 0 ? Math.round(recPend / avgRec * 30) : 0;
+            const pmp = avgDesp > 0 ? Math.round(despPend / avgDesp * 30) : 0;
 
-            const resultadoCard = document.getElementById('resultadoCard');
-            if (resultado >= 0) {
-                resultadoCard.className = 'kpi-card positive';
-            } else {
-                resultadoCard.className = 'kpi-card negative';
+            // CF = coverage factor (x)
+            const cf = despesa > 0 ? (receita / despesa).toFixed(2) : 0;
+
+            // WACC approx = non-op expenses as % of receita
+            const wacc = receita > 0 ? Math.round(despesaNaoOp / receita * 100) : 0;
+
+            // Runway: cumulative realized cash / monthly burn
+            let acqRec = 0, acqDesp = 0;
+            rawData.forEach(r => {
+                if (r.status === 'ACQUITTED') {
+                    if (r.tipo === 'Receita') acqRec += r.total || 0;
+                    else acqDesp += r.total || 0;
+                }
+            });
+            const cashPos = acqRec - acqDesp;
+            const runway = avgDesp > 0 ? Math.max(0, Math.round(cashPos / avgDesp)) : 0;
+            const runwayPct = Math.min(100, runway > 0 ? Math.min(runway / 24 * 100, 100) : 0);
+
+            // FCL, necessidade, construção, retirada
+            const fcl = ebitdaVal - despesaNaoOp;
+            const necessidade = avgDesp;
+            const construcao = resultado / numMonths;
+            const retiradaMax = Math.max(0, resultado);
+            const retiradaSug = retiradaMax * 0.33;
+
+            // Geração de caixa (do dia / semana / mês - from all raw data)
+            const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay());
+            const weekStartStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth()+1).padStart(2,'0')}-${String(weekStart.getDate()).padStart(2,'0')}`;
+            let caixaDia = 0, caixaSemana = 0, caixaMes = 0;
+            rawData.forEach(r => {
+                const dueRaw = r.dueDate || '';
+                const dueShort = dueRaw.includes('T') ? dueRaw.split('T')[0] : dueRaw;
+                const dueMon = getYearMonthFromDate(dueRaw) || '';
+                const amt = (r.total || 0) * (r.tipo === 'Receita' ? 1 : -1);
+                if (dueShort === todayStr) caixaDia += amt;
+                if (dueShort >= weekStartStr && dueShort <= todayStr) caixaSemana += amt;
+                if (dueMon === currentMonth) caixaMes += amt;
+            });
+
+            // --- DOM updates ---
+            const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = formatCurrency(v); };
+            const setV = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+            setT('receitaTotal', receita); setT('despesaTotal', despesa);
+            setT('receitaVencidos', receitaVencidos); setT('receitaVenceHoje', receitaVenceHoje); setT('receitaVenceMes', receitaVenceMes);
+            setT('despesaVencidos', despesaVencidos); setT('despesaVenceHoje', despesaVenceHoje); setT('despesaVenceMes', despesaVenceMes);
+            setT('despesaOpVG', despesaOp); setT('despesaNaoOpVG', despesaNaoOp);
+            setT('margemBrutaVG', resultado); setT('resultadoLiquido', resultado);
+            setT('pontoEquilibrioVG', despesa);
+            setV('pmrVG', pmr); setV('pmpVG', pmp); setV('cfVG', cf); setV('waccVG', wacc + '%');
+            setV('runwayVG', runway);
+            setT('fclivreVG', fcl); setT('necessidadeVG', necessidade); setT('construcaoVG', construcao);
+            setT('caixaDia', caixaDia); setT('caixaSemana', caixaSemana); setT('caixaMes', caixaMes);
+
+            // Trend icon colors
+            const margemTrend = document.getElementById('margemTrendVG');
+            if (margemTrend) { margemTrend.className = 'fas fa-arrow-' + (resultado >= 0 ? 'up' : 'down') + ' vg-kpi-trend ' + (resultado >= 0 ? 'up' : 'down'); }
+            const resT = document.getElementById('resultadoTrendVG');
+            if (resT) { resT.className = 'fas fa-arrow-' + (resultado >= 0 ? 'up' : 'down') + ' vg-kpi-trend ' + (resultado >= 0 ? 'up' : 'down'); }
+
+            // EBITDA ring
+            const circ = 163.36;
+            const ring = document.getElementById('ebitdaRingFill');
+            if (ring) { ring.style.strokeDashoffset = circ - (circ * Math.max(0, Math.min(100, ebitdaPerc)) / 100); }
+            setV('ebitdaPercVG', ebitdaPerc + '%');
+
+            // Runway bar
+            const rbar = document.getElementById('runwayBarVG');
+            if (rbar) rbar.style.width = runwayPct + '%';
+
+            // Retirada slider
+            const slider = document.getElementById('retiradaSlider');
+            if (slider) {
+                slider.max = retiradaMax;
+                slider.value = retiradaSug;
+                const lbl = document.getElementById('retiradaSliderLabel');
+                const maxLbl = document.getElementById('retiradaMaxLabel');
+                if (lbl) lbl.textContent = formatCurrency(retiradaSug);
+                if (maxLbl) maxLbl.textContent = formatCurrency(retiradaMax);
+                slider.oninput = function() {
+                    setT('retiradaVG', parseFloat(this.value));
+                    const l = document.getElementById('retiradaSliderLabel');
+                    if (l) l.textContent = formatCurrency(parseFloat(this.value));
+                };
             }
+            setT('retiradaVG', retiradaSug);
+            setT('retiradaMaxVG', retiradaMax * 0.3);
 
             createRevenueExpenseChart(filteredData);
             createNetValueChart(filteredData);
             createFluxosDistribuicaoChart(filteredData);
+            createGeracaoCaixaChart();
+            createTop5CategoriasChart(filteredData);
         }
         
         function updateReceitaPage() {
@@ -4101,7 +4344,62 @@ function getYearMonthFromDate(dateStr) {
             }).format(value);
         }
 
-        function createFluxosDistribuicaoChart(data) {
+        function createGeracaoCaixaChart() {
+    // Last 12 months net cash flow from rawData
+    const monthly = {};
+    rawData.forEach(r => {
+        const d = getDateForRow(r, 'realizadoProjetado');
+        const mk = getYearMonthFromDate(d);
+        if (!mk) return;
+        if (!monthly[mk]) monthly[mk] = 0;
+        monthly[mk] += (r.total || 0) * (r.tipo === 'Receita' ? 1 : -1);
+    });
+    const months = Object.keys(monthly).sort().slice(-12);
+    const vals = months.map(m => monthly[m]);
+    const labels = months.map(m => { const [y, mo] = m.split('-'); return mo + '/' + y.slice(2); });
+    if (!document.getElementById('chartGeracaoCaixa')) return;
+    Plotly.newPlot('chartGeracaoCaixa', [{
+        x: labels, y: vals, type: 'scatter', mode: 'lines+markers',
+        line: { color: '#FFD700', width: 2 },
+        marker: { size: 5, color: '#FFD700' },
+        fill: 'tozeroy',
+        fillcolor: 'rgba(255,215,0,0.08)'
+    }], {
+        paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+        margin: { t: 8, b: 30, l: 50, r: 10 },
+        xaxis: { tickfont: { color: '#64748b', size: 10 }, gridcolor: 'transparent' },
+        yaxis: { tickfont: { color: '#64748b', size: 10 }, gridcolor: 'rgba(255,255,255,0.06)', tickformat: '.2s' },
+        font: { color: '#cbd5e1' }
+    }, { responsive: true, displayModeBar: false });
+}
+
+function createTop5CategoriasChart(data) {
+    const cats = {};
+    data.filter(r => r.tipo === 'Despesa').forEach(r => {
+        const c = (r['categoriesRatio.category'] || 'Outros').split(' ').slice(0, 2).join(' ');
+        cats[c] = (cats[c] || 0) + (r.total || 0);
+    });
+    const totalRec = data.filter(r => r.tipo === 'Receita').reduce((s, r) => s + (r.total || 0), 0);
+    const sorted = Object.entries(cats).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const labels = sorted.map(([c]) => c.length > 14 ? c.slice(0, 12) + '..' : c);
+    const percs = sorted.map(([, v]) => totalRec > 0 ? parseFloat((v / totalRec * 100).toFixed(1)) : 0);
+    if (!document.getElementById('chartTop5Categorias')) return;
+    Plotly.newPlot('chartTop5Categorias', [{
+        x: labels, y: percs, type: 'bar',
+        marker: { color: '#FFD700' },
+        text: percs.map(p => p + '%'), textposition: 'outside',
+        textfont: { color: '#cbd5e1', size: 11 }
+    }], {
+        paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+        margin: { t: 16, b: 60, l: 40, r: 10 },
+        xaxis: { tickfont: { color: '#94a3b8', size: 11 }, tickangle: -15, gridcolor: 'transparent' },
+        yaxis: { title: '% do Faturamento', tickfont: { color: '#94a3b8', size: 10 }, ticksuffix: '%', gridcolor: 'rgba(255,255,255,0.07)' },
+        font: { color: '#cbd5e1' },
+        hoverlabel: { bgcolor: 'rgba(15,15,35,0.95)', font: { color: '#fff' } }
+    }, { responsive: true, displayModeBar: false });
+}
+
+function createFluxosDistribuicaoChart(data) {
             var fco = 0, fcf = 0, fci = 0;
             data.forEach(function(row) {
                 if (row.tipo !== 'Despesa') return;
