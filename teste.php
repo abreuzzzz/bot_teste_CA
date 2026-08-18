@@ -3221,6 +3221,13 @@ document.getElementById('fluxoFilterDRE').addEventListener('change', loadDREData
         if (wrapper && typeof syncDropdownFromSelect === 'function') {
             syncDropdownFromSelect(wrapper, select);
         }
+}
+
+        function isDateInRange(dateStr, startMonth, endMonth) {
+    if (!dateStr) return true;
+    
+    // Se não houver filtro de data, retornar true
+    if (!startMonth && !endMonth) return true;
     
     // Normalizar a data removendo timezone e convertendo para objeto Date
     let dateObj;
